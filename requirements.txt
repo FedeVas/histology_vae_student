@@ -1,0 +1,13 @@
+numpy
+pandas
+Pillow
+PyYAML
+matplotlib
+scikit-learn
+scikit-image
+tqdm
+tensorboard
+umap-learn
+jupyterlab
+ipykernel
+pytest

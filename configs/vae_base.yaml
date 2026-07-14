@@ -1,0 +1,66 @@
+project:
+  name: histology-vae
+  seed: 42
+  output_dir: outputs
+
+device:
+  # Доступные варианты:
+  # auto — CUDA → MPS → CPU
+  # cpu
+  # cuda
+  # mps
+  accelerator: auto
+
+  # Детерминированное выполнение полезно для сравнения экспериментов.
+  deterministic: true
+
+data:
+  root_dir: .
+  metadata_csv: data/metadata/synthetic_metadata.csv
+
+  image_size: 128
+  channels: 3
+  batch_size: 16
+
+  # Для Windows начинаем с 0.
+  num_workers: 0
+
+  # При auto включается только для CUDA.
+  pin_memory: auto
+
+  split:
+    train_fraction: 0.70
+    validation_fraction: 0.15
+    test_fraction: 0.15
+
+  augmentation:
+    horizontal_flip_probability: 0.5
+    vertical_flip_probability: 0.5
+    random_quarter_turn: true
+
+  synthetic:
+    enabled: true
+    output_dir: data/raw/synthetic_patches
+    num_patients: 12
+    slides_per_patient: 2
+    patches_per_slide: 8
+
+model:
+  name: convolutional_vae
+  latent_dim: 64
+  hidden_channels:
+    - 32
+    - 64
+    - 128
+    - 256
+
+training:
+  epochs: 50
+  learning_rate: 0.001
+  weight_decay: 0.00001
+
+  beta: 1.0
+  kl_warmup_epochs: 10
+
+  # В первой реализации mixed precision включаем только для CUDA.
+  mixed_precision: auto
