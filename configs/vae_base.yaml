@@ -47,20 +47,29 @@ data:
 
 model:
   name: convolutional_vae
+
   latent_dim: 64
+
   hidden_channels:
     - 32
     - 64
     - 128
     - 256
 
+  # Ограничиваем log-variance для численной устойчивости.
+  log_var_min: -10.0
+  log_var_max: 10.0
+
 training:
   epochs: 50
+
   learning_rate: 0.001
   weight_decay: 0.00001
+
+  # mse или l1
+  reconstruction_loss: mse
 
   beta: 1.0
   kl_warmup_epochs: 10
 
-  # В первой реализации mixed precision включаем только для CUDA.
   mixed_precision: auto
