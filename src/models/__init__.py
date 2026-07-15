@@ -1,5 +1,6 @@
 from src.models.decoder import ConvolutionalDecoder
 from src.models.encoder import ConvolutionalEncoder
+from src.models.factory import build_vae_from_config
 from src.models.losses import (
     VAELossOutput,
     compute_vae_loss,
@@ -18,4 +19,5 @@ __all__ = [
     "VAELossOutput",
     "compute_vae_loss",
     "linear_kl_beta",
+    "build_vae_from_config"
 ]

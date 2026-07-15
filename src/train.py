@@ -17,6 +17,7 @@ from src.datasets.factory import (
 )
 from src.datasets.split import get_split_summary
 from src.models.losses import linear_kl_beta
+from src.models.factory import build_vae_from_config
 from src.models.vae import ConvolutionalVAE
 from src.training.checkpoints import (
     load_training_checkpoint,
@@ -70,34 +71,6 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     return parser.parse_args()
-
-
-def build_model(
-    config: dict,
-    runtime: RuntimeDevice,
-) -> ConvolutionalVAE:
-    data_config = config["data"]
-    model_config = config["model"]
-
-    model = ConvolutionalVAE(
-        image_channels=int(data_config["channels"]),
-        image_size=int(data_config["image_size"]),
-        hidden_channels=[
-            int(channel)
-            for channel in model_config[
-                "hidden_channels"
-            ]
-        ],
-        latent_dim=int(model_config["latent_dim"]),
-        log_var_min=float(
-            model_config["log_var_min"]
-        ),
-        log_var_max=float(
-            model_config["log_var_max"]
-        ),
-    )
-
-    return model.to(runtime.device)
 
 
 def create_optimizer(
@@ -354,9 +327,9 @@ def main() -> None:
     print(get_split_summary(metadata).to_string(index=False))
     print()
 
-    model = build_model(
+    model = build_vae_from_config(
         config=config,
-        runtime=runtime,
+        target_device=runtime.device,
     )
 
     optimizer = create_optimizer(

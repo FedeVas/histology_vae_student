@@ -1,0 +1,104 @@
+project:
+  name: histology_vae_student
+  experiment_name: vae_base
+  seed: 42
+  output_dir: outputs
+
+device:
+  # Доступные варианты:
+  # auto — CUDA → MPS → CPU
+  # cpu
+  # cuda
+  # mps
+  accelerator: cpu
+
+  # Детерминированное выполнение полезно для сравнения экспериментов.
+  deterministic: true
+
+data:
+  root_dir: .
+  metadata_csv: data/metadata/synthetic_metadata.csv
+
+  image_size: 128
+  channels: 3
+  batch_size: 16
+
+  # Для Windows начинаем с 0.
+  num_workers: 0
+
+  # При auto включается только для CUDA.
+  pin_memory: auto
+
+  split:
+    train_fraction: 0.70
+    validation_fraction: 0.15
+    test_fraction: 0.15
+
+  augmentation:
+    horizontal_flip_probability: 0.5
+    vertical_flip_probability: 0.5
+    random_quarter_turn: true
+
+  synthetic:
+    enabled: true
+    output_dir: data/raw/synthetic_patches
+    num_patients: 12
+    slides_per_patient: 2
+    patches_per_slide: 8
+
+model:
+  name: convolutional_vae
+
+  latent_dim: 16
+
+  hidden_channels:
+    - 16
+    - 32
+    - 64
+    - 128
+
+  # Ограничиваем log-variance для численной устойчивости.
+  log_var_min: -10.0
+  log_var_max: 10.0
+
+training:
+  epochs: 25
+
+  learning_rate: 0.001
+  weight_decay: 0.00001
+
+  reconstruction_loss: mse
+
+  beta: 1.0
+  kl_warmup_epochs: 5
+
+  mixed_precision: auto
+
+  # Ограничение общей нормы градиента.
+  # null полностью отключает gradient clipping.
+  gradient_clip_norm: 5.0
+
+  # Частота логирования batch metrics в TensorBoard.
+  log_every_n_steps: 5
+
+  # Частота сохранения reconstruction preview.
+  preview_every_n_epochs: 1
+  preview_images: 8
+
+  # null означает использование всех batches.
+  # Эти значения можно ограничить для отладки.
+  max_train_batches: null
+  max_validation_batches: null
+
+  early_stopping:
+    enabled: true
+    patience: 8
+    min_delta: 0.01
+
+logging:
+  run_name: synthetic_cpu_baseline
+
+evaluation:
+  active_unit_variance_treshhold: 0.001
+  low_kl_threshhold: 0.001
+  preview_images: 8
