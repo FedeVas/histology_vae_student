@@ -1,5 +1,6 @@
 project:
-  name: histology-vae
+  name: histology_vae_student
+  experiment_name: vae_base
   seed: 42
   output_dir: outputs
 
@@ -66,10 +67,33 @@ training:
   learning_rate: 0.001
   weight_decay: 0.00001
 
-  # mse или l1
   reconstruction_loss: mse
 
   beta: 1.0
   kl_warmup_epochs: 10
 
   mixed_precision: auto
+
+  # Ограничение общей нормы градиента.
+  # null полностью отключает gradient clipping.
+  gradient_clip_norm: 5.0
+
+  # Частота логирования batch metrics в TensorBoard.
+  log_every_n_steps: 10
+
+  # Частота сохранения reconstruction preview.
+  preview_every_n_epochs: 1
+  preview_images: 8
+
+  # null означает использование всех batches.
+  # Эти значения можно ограничить для отладки.
+  max_train_batches: null
+  max_validation_batches: null
+
+  early_stopping:
+    enabled: true
+    patience: 10
+    min_delta: 0.0
+
+logging:
+  run_name: vae_base
