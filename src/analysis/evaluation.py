@@ -10,40 +10,33 @@ from src.analysis.reconstruction_metrics import (
     ReconstructionMetricAccumulator,
     ReconstructionMetrics,
 )
-from src.models.vae import ConvolutionalVAE
 from src.utils.device import RuntimeDevice
 
 
 @dataclass(frozen=True)
-class VAEEvaluationResult:
+class RepresentationEvaluationResult:
     reconstruction_metrics: ReconstructionMetrics
     embeddings: pd.DataFrame
-    mu: torch.Tensor
-    log_var: torch.Tensor
+
+    latent_vectors: torch.Tensor
+    log_var: torch.Tensor | None
 
 
 @torch.inference_mode()
-def evaluate_vae(
-    model: ConvolutionalVAE,
+def evaluate_representation_model(
+    model: torch.nn.Module,
     data_loader: DataLoader,
     runtime: RuntimeDevice,
     split_name: str,
     max_batches: int | None = None,
-) -> VAEEvaluationResult:
-    """
-    Выполняет deterministic evaluation.
-
-    Для embeddings и reconstruction используется:
-
-        z = mu
-    """
+) -> RepresentationEvaluationResult:
     model.eval()
 
     metric_accumulator = (
         ReconstructionMetricAccumulator()
     )
 
-    mu_batches: list[torch.Tensor] = []
+    latent_batches: list[torch.Tensor] = []
     log_var_batches: list[torch.Tensor] = []
 
     paths: list[str] = []
@@ -52,7 +45,11 @@ def evaluate_vae(
     patch_ids: list[str] = []
     labels: list[int] = []
 
-    for batch_index, batch in enumerate(data_loader):
+    has_log_var: bool | None = None
+
+    for batch_index, batch in enumerate(
+        data_loader
+    ):
         if (
             max_batches is not None
             and batch_index >= max_batches
@@ -71,16 +68,38 @@ def evaluate_vae(
 
         metric_accumulator.update(
             target=images,
-            reconstruction=output.reconstruction,
+            reconstruction=(
+                output.reconstruction
+            ),
         )
 
-        mu_batches.append(
-            output.mu.detach().float().cpu()
+        latent_batches.append(
+            output.embedding
+            .detach()
+            .float()
+            .cpu()
         )
 
-        log_var_batches.append(
-            output.log_var.detach().float().cpu()
+        current_has_log_var = (
+            output.log_var is not None
         )
+
+        if has_log_var is None:
+            has_log_var = current_has_log_var
+
+        elif has_log_var != current_has_log_var:
+            raise RuntimeError(
+                "Model output inconsistently contains "
+                "log_var across batches."
+            )
+
+        if output.log_var is not None:
+            log_var_batches.append(
+                output.log_var
+                .detach()
+                .float()
+                .cpu()
+            )
 
         batch_size = images.shape[0]
 
@@ -111,10 +130,14 @@ def evaluate_vae(
 
         batch_labels = batch["label"]
 
-        if isinstance(batch_labels, torch.Tensor):
+        if isinstance(
+            batch_labels,
+            torch.Tensor,
+        ):
             labels.extend(
                 int(value)
-                for value in batch_labels.tolist()
+                for value
+                in batch_labels.tolist()
             )
         else:
             labels.extend(
@@ -122,13 +145,23 @@ def evaluate_vae(
                 for value in batch_labels
             )
 
-    if not mu_batches:
+    if not latent_batches:
         raise RuntimeError(
-            "Evaluation DataLoader produced no batches."
+            "Evaluation produced no batches."
         )
 
-    mu = torch.cat(mu_batches, dim=0)
-    log_var = torch.cat(log_var_batches, dim=0)
+    latent_vectors = torch.cat(
+        latent_batches,
+        dim=0,
+    )
+
+    if log_var_batches:
+        log_var = torch.cat(
+            log_var_batches,
+            dim=0,
+        )
+    else:
+        log_var = None
 
     metadata_frame = pd.DataFrame(
         {
@@ -143,27 +176,40 @@ def evaluate_vae(
 
     latent_columns = [
         f"latent_{dimension:03d}"
-        for dimension in range(mu.shape[1])
+        for dimension in range(
+            latent_vectors.shape[1]
+        )
     ]
 
     latent_frame = pd.DataFrame(
-        mu.numpy(),
+        latent_vectors.numpy(),
         columns=latent_columns,
     )
 
     embeddings = pd.concat(
         [
-            metadata_frame.reset_index(drop=True),
-            latent_frame.reset_index(drop=True),
+            metadata_frame.reset_index(
+                drop=True
+            ),
+            latent_frame.reset_index(
+                drop=True
+            ),
         ],
         axis=1,
     )
 
-    return VAEEvaluationResult(
+    return RepresentationEvaluationResult(
         reconstruction_metrics=(
             metric_accumulator.compute()
         ),
         embeddings=embeddings,
-        mu=mu,
+        latent_vectors=latent_vectors,
         log_var=log_var,
     )
+
+
+# Совместимость с предыдущим кодом.
+VAEEvaluationResult = (
+    RepresentationEvaluationResult
+)
+evaluate_vae = evaluate_representation_model

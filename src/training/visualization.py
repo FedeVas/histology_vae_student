@@ -6,13 +6,12 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid, save_image
 
-from src.models.vae import ConvolutionalVAE
 from src.utils.device import RuntimeDevice
 
 
 @torch.inference_mode()
 def create_reconstruction_grid(
-    model: ConvolutionalVAE,
+    model: torch.nn.Module,
     data_loader: DataLoader,
     runtime: RuntimeDevice,
     number_of_images: int = 8,

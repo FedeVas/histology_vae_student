@@ -5,13 +5,13 @@ from dataclasses import dataclass
 import torch
 from torch.nn import functional as functional
 
+from src.models.output import (
+    RepresentationModelOutput,
+)
+
 
 @dataclass
-class VAELossOutput:
-    """
-    Компоненты VAE loss.
-    """
-
+class ModelLossOutput:
     total_loss: torch.Tensor
     reconstruction_loss: torch.Tensor
     kl_loss: torch.Tensor
@@ -22,6 +22,106 @@ class VAELossOutput:
     beta: float
 
 
+# Обратная совместимость с предыдущим названием.
+VAELossOutput = ModelLossOutput
+
+
+def compute_model_loss(
+    output: RepresentationModelOutput,
+    target: torch.Tensor,
+    model_type: str,
+    beta: float,
+    reconstruction_type: str = "mse",
+) -> ModelLossOutput:
+    """
+    Выбирает loss в зависимости от типа модели.
+    """
+    normalized_model_type = (
+        model_type.strip().lower()
+    )
+
+    if normalized_model_type == "autoencoder":
+        return compute_autoencoder_loss(
+            reconstruction=output.reconstruction,
+            target=target,
+            reconstruction_type=(
+                reconstruction_type
+            ),
+        )
+
+    if normalized_model_type == "vae":
+        if output.mu is None:
+            raise ValueError(
+                "VAE output does not contain mu."
+            )
+
+        if output.log_var is None:
+            raise ValueError(
+                "VAE output does not contain log_var."
+            )
+
+        return compute_vae_loss(
+            reconstruction=output.reconstruction,
+            target=target,
+            mu=output.mu,
+            log_var=output.log_var,
+            beta=beta,
+            reconstruction_type=(
+                reconstruction_type
+            ),
+        )
+
+    raise ValueError(
+        f"Unknown model type: {model_type!r}"
+    )
+
+
+def compute_autoencoder_loss(
+    reconstruction: torch.Tensor,
+    target: torch.Tensor,
+    reconstruction_type: str = "mse",
+) -> ModelLossOutput:
+    """
+    Loss обычного autoencoder:
+
+        total = reconstruction loss
+    """
+    elementwise_loss = (
+        _compute_elementwise_reconstruction_loss(
+            reconstruction=reconstruction,
+            target=target,
+            reconstruction_type=(
+                reconstruction_type
+            ),
+        )
+    )
+
+    reconstruction_loss = (
+        elementwise_loss
+        .flatten(start_dim=1)
+        .sum(dim=1)
+        .mean()
+    )
+
+    number_of_pixels = target[0].numel()
+
+    zero = reconstruction_loss.new_zeros(())
+
+    return ModelLossOutput(
+        total_loss=reconstruction_loss,
+        reconstruction_loss=(
+            reconstruction_loss
+        ),
+        kl_loss=zero,
+        reconstruction_loss_per_pixel=(
+            reconstruction_loss
+            / number_of_pixels
+        ),
+        kl_loss_per_dimension=zero,
+        beta=0.0,
+    )
+
+
 def compute_vae_loss(
     reconstruction: torch.Tensor,
     target: torch.Tensor,
@@ -29,20 +129,8 @@ def compute_vae_loss(
     log_var: torch.Tensor,
     beta: float = 1.0,
     reconstruction_type: str = "mse",
-) -> VAELossOutput:
-    """
-    Вычисляет loss:
-
-        total_loss =
-            reconstruction_loss
-            + beta * kl_loss
-
-    Reconstruction и KL сначала суммируются внутри каждого
-    объекта batch, после чего усредняются по batch.
-
-    Это соответствует стандартной per-sample форме ELBO.
-    """
-    _validate_loss_inputs(
+) -> ModelLossOutput:
+    _validate_vae_inputs(
         reconstruction=reconstruction,
         target=target,
         mu=mu,
@@ -50,81 +138,89 @@ def compute_vae_loss(
         beta=beta,
     )
 
-    reconstruction_type = (
-        reconstruction_type.strip().lower()
-    )
-
-    if reconstruction_type == "mse":
-        elementwise_reconstruction_loss = (
-            functional.mse_loss(
-                reconstruction,
-                target,
-                reduction="none",
-            )
+    elementwise_loss = (
+        _compute_elementwise_reconstruction_loss(
+            reconstruction=reconstruction,
+            target=target,
+            reconstruction_type=(
+                reconstruction_type
+            ),
         )
-
-    elif reconstruction_type == "l1":
-        elementwise_reconstruction_loss = (
-            functional.l1_loss(
-                reconstruction,
-                target,
-                reduction="none",
-            )
-        )
-
-    else:
-        raise ValueError(
-            "reconstruction_type must be 'mse' or 'l1'. "
-            f"Received: {reconstruction_type!r}"
-        )
-
-    reconstruction_loss_per_sample = (
-        elementwise_reconstruction_loss
-        .flatten(start_dim=1)
-        .sum(dim=1)
     )
 
     reconstruction_loss = (
-        reconstruction_loss_per_sample.mean()
+        elementwise_loss
+        .flatten(start_dim=1)
+        .sum(dim=1)
+        .mean()
     )
 
-    kl_loss_per_sample = -0.5 * torch.sum(
-        1.0
-        + log_var
-        - mu.pow(2)
-        - log_var.exp(),
-        dim=1,
+    kl_loss = (
+        -0.5
+        * (
+            1.0
+            + log_var
+            - mu.pow(2)
+            - log_var.exp()
+        )
+        .sum(dim=1)
+        .mean()
     )
-
-    kl_loss = kl_loss_per_sample.mean()
 
     total_loss = (
         reconstruction_loss
         + float(beta) * kl_loss
     )
 
-    number_of_pixels_per_sample = target[0].numel()
-    number_of_latent_dimensions = mu.shape[1]
-
-    reconstruction_loss_per_pixel = (
-        reconstruction_loss
-        / number_of_pixels_per_sample
-    )
-
-    kl_loss_per_dimension = (
-        kl_loss
-        / number_of_latent_dimensions
-    )
-
-    return VAELossOutput(
+    return ModelLossOutput(
         total_loss=total_loss,
-        reconstruction_loss=reconstruction_loss,
+        reconstruction_loss=(
+            reconstruction_loss
+        ),
         kl_loss=kl_loss,
         reconstruction_loss_per_pixel=(
-            reconstruction_loss_per_pixel
+            reconstruction_loss
+            / target[0].numel()
         ),
-        kl_loss_per_dimension=kl_loss_per_dimension,
+        kl_loss_per_dimension=(
+            kl_loss / mu.shape[1]
+        ),
         beta=float(beta),
+    )
+
+
+def _compute_elementwise_reconstruction_loss(
+    reconstruction: torch.Tensor,
+    target: torch.Tensor,
+    reconstruction_type: str,
+) -> torch.Tensor:
+    if reconstruction.shape != target.shape:
+        raise ValueError(
+            "Reconstruction and target must "
+            "have equal shapes."
+        )
+
+    normalized_type = (
+        reconstruction_type.strip().lower()
+    )
+
+    if normalized_type == "mse":
+        return functional.mse_loss(
+            reconstruction,
+            target,
+            reduction="none",
+        )
+
+    if normalized_type == "l1":
+        return functional.l1_loss(
+            reconstruction,
+            target,
+            reduction="none",
+        )
+
+    raise ValueError(
+        "reconstruction_type must be "
+        f"'mse' or 'l1', got {normalized_type!r}."
     )
 
 
@@ -133,17 +229,6 @@ def linear_kl_beta(
     warmup_epochs: int,
     maximum_beta: float,
 ) -> float:
-    """
-    Линейно увеличивает beta от 0 до maximum_beta.
-
-    current_epoch считается от нуля.
-
-    Пример для warmup_epochs=10:
-
-        epoch 0  -> beta 0.0
-        epoch 5  -> beta 0.5 * maximum_beta
-        epoch 10 -> beta 1.0 * maximum_beta
-    """
     if current_epoch < 0:
         raise ValueError(
             "current_epoch must be non-negative."
@@ -162,17 +247,17 @@ def linear_kl_beta(
     if warmup_epochs == 0:
         return float(maximum_beta)
 
-    warmup_progress = min(
+    progress = min(
         current_epoch / warmup_epochs,
         1.0,
     )
 
     return float(
-        maximum_beta * warmup_progress
+        maximum_beta * progress
     )
 
 
-def _validate_loss_inputs(
+def _validate_vae_inputs(
     reconstruction: torch.Tensor,
     target: torch.Tensor,
     mu: torch.Tensor,
@@ -181,27 +266,24 @@ def _validate_loss_inputs(
 ) -> None:
     if reconstruction.shape != target.shape:
         raise ValueError(
-            "Reconstruction and target must have equal shapes. "
-            f"reconstruction={tuple(reconstruction.shape)}, "
-            f"target={tuple(target.shape)}."
+            "Reconstruction and target must "
+            "have equal shapes."
         )
 
     if mu.shape != log_var.shape:
         raise ValueError(
-            "mu and log_var must have equal shapes. "
-            f"mu={tuple(mu.shape)}, "
-            f"log_var={tuple(log_var.shape)}."
+            "mu and log_var must have equal shapes."
         )
 
     if mu.ndim != 2:
         raise ValueError(
             "mu and log_var must have shape "
-            "batch_size x latent_dim."
+            "batch x latent_dim."
         )
 
     if reconstruction.shape[0] != mu.shape[0]:
         raise ValueError(
-            "Image batch size and latent batch size must match."
+            "Image and latent batch sizes must match."
         )
 
     if beta < 0:

@@ -7,7 +7,7 @@ from typing import Any
 
 import torch
 
-from src.analysis.evaluation import evaluate_vae
+from src.analysis.evaluation import evaluate_representation_model
 from src.analysis.latent import (
     build_latent_statistics_frame,
     compute_latent_diagnostics,
@@ -21,7 +21,8 @@ from src.datasets.factory import (
     prepare_metadata,
 )
 from src.models.factory import (
-    build_vae_from_config,
+    build_model_from_config,
+    get_model_type,
 )
 from src.training.visualization import (
     create_reconstruction_grid,
@@ -173,7 +174,7 @@ def main() -> None:
         arguments.split,
     )
 
-    model = build_vae_from_config(
+    model = build_model_from_config(
         config=config,
         target_device=runtime.device,
     )
@@ -184,7 +185,7 @@ def main() -> None:
         device=runtime.device,
     )
 
-    evaluation_result = evaluate_vae(
+    evaluation_result = evaluate_representation_model(
         model=model,
         data_loader=selected_loader,
         runtime=runtime,
@@ -198,8 +199,8 @@ def main() -> None:
     )
 
     diagnostics = compute_latent_diagnostics(
-        mu=evaluation_result.mu,
-        log_var=evaluation_result.log_var,
+        latent_vectors=evaluation_result.latent_vectors,
+        log_var=evaluation_result.log_var,        
         active_unit_variance_threshold=float(
             evaluation_config.get(
                 "active_unit_variance_threshold",
@@ -288,6 +289,11 @@ def main() -> None:
     )
 
     metrics_summary = {
+        "model" :{
+            "type": get_model_type(config),
+            "beta": float(config["training"]["beta"]),
+            "latent_dim": int(config["model"]["latent_dim"])
+        },
         "split": arguments.split,
         "checkpoint": str(
             arguments.checkpoint.resolve()
@@ -369,15 +375,6 @@ def main() -> None:
         f"Active fraction:     "
         f"{diagnostics.active_fraction:.2%}"
     )
-    print(
-        f"Low-KL dimensions:   "
-        f"{diagnostics.number_of_low_kl_dimensions}"
-    )
-    print(
-        f"Mean KL/dimension:   "
-        f"{diagnostics.mean_kl_per_dimension:.6f}"
-    )
-
     print()
     print(
         f"Results:             "
@@ -390,7 +387,20 @@ def main() -> None:
             "WARNING: no active latent units were detected. "
             "This may indicate posterior collapse."
         )
-
+    if diagnostics.mean_kl_per_dimension is None:
+        print("Mean KL/dimension:   not applicable")
+    else:
+        print(
+            f"Mean KL/dimension:   "
+            f"{diagnostics.mean_kl_per_dimension:.6f}"
+        )
+    if diagnostics.number_of_low_kl_dimensions is None:
+        print("Low-KL dimensions:   not applicable")
+    else:
+        print(
+            f"Low-KL dimensions:   "
+            f"{diagnostics.number_of_low_kl_dimensions}"
+        )
     print("=" * 68)
 
 

@@ -8,18 +8,7 @@ from torch import nn
 
 from src.models.decoder import ConvolutionalDecoder
 from src.models.encoder import ConvolutionalEncoder
-
-
-@dataclass
-class VAEOutput:
-    """
-    Результат одного forward pass VAE.
-    """
-
-    reconstruction: torch.Tensor
-    mu: torch.Tensor
-    log_var: torch.Tensor
-    z: torch.Tensor
+from src.models.output import RepresentationModelOutput
 
 
 class ConvolutionalVAE(nn.Module):
@@ -119,7 +108,7 @@ class ConvolutionalVAE(nn.Module):
         self,
         inputs: torch.Tensor,
         sample_posterior: bool | None = None,
-    ) -> VAEOutput:
+    ) -> RepresentationModelOutput:
         """
         В training mode по умолчанию используется sampling.
 
@@ -141,8 +130,9 @@ class ConvolutionalVAE(nn.Module):
 
         reconstruction = self.decode(z)
 
-        return VAEOutput(
+        return RepresentationModelOutput(
             reconstruction=reconstruction,
+            embedding=mu,
             mu=mu,
             log_var=log_var,
             z=z,
@@ -172,3 +162,6 @@ class ConvolutionalVAE(nn.Module):
         )
 
         return self.decode(latent_vectors)
+    
+    
+VAEOutput = RepresentationModelOutput

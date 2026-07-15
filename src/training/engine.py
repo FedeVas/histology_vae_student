@@ -8,7 +8,7 @@ from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from src.models.losses import compute_vae_loss
+from src.models.losses import compute_model_loss
 from src.models.vae import ConvolutionalVAE
 from src.training.metrics import (
     EpochMetricAccumulator,
@@ -30,6 +30,7 @@ def train_one_epoch(
     global_step: int = 0,
     log_every_n_steps: int = 10,
     max_batches: int | None = None,
+    model_type: str = "vae",
 ) -> tuple[EpochMetrics, int]:
     """
     Выполняет одну train epoch.
@@ -63,11 +64,10 @@ def train_one_epoch(
                 sample_posterior=True,
             )
 
-            loss_output = compute_vae_loss(
-                reconstruction=output.reconstruction,
+            loss_output = compute_model_loss(
+                output=output,
                 target=images,
-                mu=output.mu,
-                log_var=output.log_var,
+                model_type=model_type,
                 beta=beta,
                 reconstruction_type=reconstruction_type,
             )
@@ -158,6 +158,7 @@ def validate_one_epoch(
     beta: float,
     reconstruction_type: str,
     max_batches: int | None = None,
+    model_type: str = "vae",
 ) -> EpochMetrics:
     """
     Выполняет deterministic validation epoch.
@@ -186,11 +187,10 @@ def validate_one_epoch(
                 sample_posterior=False,
             )
 
-            loss_output = compute_vae_loss(
-                reconstruction=output.reconstruction,
+            loss_output = compute_model_loss(
+                output=output,
                 target=images,
-                mu=output.mu,
-                log_var=output.log_var,
+                model_type=model_type,
                 beta=beta,
                 reconstruction_type=reconstruction_type,
             )

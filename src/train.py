@@ -17,7 +17,7 @@ from src.datasets.factory import (
 )
 from src.datasets.split import get_split_summary
 from src.models.losses import linear_kl_beta
-from src.models.factory import build_vae_from_config
+from src.models.factory import build_model_from_config, get_model_type
 from src.models.vae import ConvolutionalVAE
 from src.training.checkpoints import (
     load_training_checkpoint,
@@ -327,11 +327,12 @@ def main() -> None:
     print(get_split_summary(metadata).to_string(index=False))
     print()
 
-    model = build_vae_from_config(
+    model = build_model_from_config(
         config=config,
         target_device=runtime.device,
     )
-
+    model_type = get_model_type(config)
+    
     optimizer = create_optimizer(
         model=model,
         config=config,
@@ -491,6 +492,11 @@ def main() -> None:
         early_stopping_config["enabled"]
     )
 
+    print(f"Model type: {model_type}")
+    print(
+        f"Maximum beta: "
+        f"{float(config['training']['beta'])}"
+    )    
     try:
         for epoch in range(
             start_epoch,
@@ -519,6 +525,7 @@ def main() -> None:
                     ]
                 ),
                 max_batches=max_train_batches,
+                model_type=model_type,
             )
 
             # Validation всегда использует maximum_beta.
@@ -531,6 +538,7 @@ def main() -> None:
                 beta=maximum_beta,
                 reconstruction_type=reconstruction_type,
                 max_batches=max_validation_batches,
+                model_type=model_type
             )
 
             history_row = metrics_to_history_row(

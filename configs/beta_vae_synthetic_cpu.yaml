@@ -47,7 +47,7 @@ data:
     patches_per_slide: 8
 
 model:
-  name: convolutional_vae
+  name: beta_vae
   type: vae
 
   latent_dim: 16
@@ -70,7 +70,7 @@ training:
 
   reconstruction_loss: mse
 
-  beta: 1.0
+  beta: 4.0
   kl_warmup_epochs: 5
 
   mixed_precision: auto
@@ -97,7 +97,7 @@ training:
     min_delta: 0.01
 
 logging:
-  run_name: synthetic_vae_beta_1
+  run_name: synthetic_vae_beta_4
 
 evaluation:
   active_unit_variance_treshhold: 0.001

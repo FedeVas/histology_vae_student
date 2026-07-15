@@ -60,7 +60,7 @@ def test_latent_diagnostics_detect_active_unit() -> None:
     log_var = torch.zeros_like(mu)
 
     diagnostics = compute_latent_diagnostics(
-        mu=mu,
+        latent_vectors=mu,
         log_var=log_var,
         active_unit_variance_threshold=0.01,
         low_kl_threshold=0.001,
@@ -84,7 +84,7 @@ def test_latent_statistics_frame_has_one_row_per_dimension() -> None:
     log_var = torch.zeros_like(mu)
 
     diagnostics = compute_latent_diagnostics(
-        mu=mu,
+        latent_vectors=mu,
         log_var=log_var,
     )
 
@@ -96,9 +96,9 @@ def test_latent_statistics_frame_has_one_row_per_dimension() -> None:
 
     assert set(frame.columns) == {
         "latent_dimension",
-        "variance_of_mu",
+        "variance_of_embedding",
         "mean_kl",
-        "mean_absolute_mu",
+        "mean_absolute_embedding",
         "mean_log_var",
         "active_unit",
         "low_kl_dimension",
@@ -108,6 +108,6 @@ def test_latent_statistics_frame_has_one_row_per_dimension() -> None:
 def test_invalid_latent_shapes_raise_error() -> None:
     with pytest.raises(ValueError):
         compute_latent_diagnostics(
-            mu=torch.zeros(4, 5),
+            latent_vectors=torch.zeros(4, 5),
             log_var=torch.zeros(4, 6),
         )
