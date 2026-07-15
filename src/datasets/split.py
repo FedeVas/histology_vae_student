@@ -144,13 +144,20 @@ def assign_patient_splits(
     validation_fraction: float = 0.15,
     test_fraction: float = 0.15,
     seed: int = 42,
+    stratify_column: str | None = None,
 ) -> pd.DataFrame:
     """
     Назначает train/validation/test split на уровне пациентов.
 
     Все патчи одного пациента попадают только в один split.
+
+    Если задан stratify_column, пациенты каждого класса
+    отдельно распределяются между train, validation и test.
     """
-    validate_metadata(metadata, require_split=False)
+    validate_metadata(
+        metadata,
+        require_split=False,
+    )
 
     fractions = _validate_fractions(
         train_fraction=train_fraction,
@@ -158,8 +165,68 @@ def assign_patient_splits(
         test_fraction=test_fraction,
     )
 
+    if stratify_column is None:
+        split_map = _build_unstratified_split_map(
+            metadata=metadata,
+            fractions=fractions,
+            seed=seed,
+        )
+    else:
+        split_map = _build_stratified_split_map(
+            metadata=metadata,
+            fractions=fractions,
+            seed=seed,
+            stratify_column=stratify_column,
+        )
+
+    result = metadata.copy()
+
+    result["patient_id"] = (
+        result["patient_id"].astype(str)
+    )
+
+    result["slide_id"] = (
+        result["slide_id"].astype(str)
+    )
+
+    result["split"] = (
+        result["patient_id"].map(split_map)
+    )
+
+    if result["split"].isna().any():
+        missing_patients = (
+            result.loc[
+                result["split"].isna(),
+                "patient_id",
+            ]
+            .unique()
+            .tolist()
+        )
+
+        raise RuntimeError(
+            "Some patients were not assigned to a split: "
+            f"{missing_patients}"
+        )
+
+    validate_metadata(
+        result,
+        require_split=True,
+    )
+
+    return result
+
+
+def _build_unstratified_split_map(
+    metadata: pd.DataFrame,
+    fractions: np.ndarray,
+    seed: int,
+) -> dict[str, str]:
     patient_ids = np.asarray(
-        sorted(metadata["patient_id"].astype(str).unique())
+        sorted(
+            metadata["patient_id"]
+            .astype(str)
+            .unique()
+        )
     )
 
     rng = np.random.default_rng(seed)
@@ -170,44 +237,176 @@ def assign_patient_splits(
         fractions=fractions,
     )
 
-    number_of_train_patients = int(split_counts[0])
-    number_of_validation_patients = int(split_counts[1])
+    return _assign_patient_ids_to_splits(
+        patient_ids=patient_ids,
+        split_counts=split_counts,
+    )
+
+
+def _build_stratified_split_map(
+    metadata: pd.DataFrame,
+    fractions: np.ndarray,
+    seed: int,
+    stratify_column: str,
+) -> dict[str, str]:
+    if stratify_column not in metadata.columns:
+        raise ValueError(
+            "Stratification column was not found in metadata: "
+            f"{stratify_column!r}"
+        )
+
+    if metadata[stratify_column].isna().any():
+        raise ValueError(
+            "Stratification column contains missing values: "
+            f"{stratify_column!r}"
+        )
+
+    patient_class_counts = (
+        metadata.groupby("patient_id")[
+            stratify_column
+        ]
+        .nunique(dropna=False)
+    )
+
+    conflicting_patients = patient_class_counts[
+        patient_class_counts > 1
+    ]
+
+    if not conflicting_patients.empty:
+        raise ValueError(
+            "Each patient must have exactly one stratification "
+            "value. Conflicting patients: "
+            f"{conflicting_patients.index.tolist()}"
+        )
+
+    patient_table = (
+        metadata[
+            [
+                "patient_id",
+                stratify_column,
+            ]
+        ]
+        .copy()
+    )
+
+    patient_table["patient_id"] = (
+        patient_table["patient_id"].astype(str)
+    )
+
+    patient_table = (
+        patient_table
+        .drop_duplicates(subset=["patient_id"])
+        .reset_index(drop=True)
+    )
+
+    rng = np.random.default_rng(seed)
+    complete_split_map: dict[str, str] = {}
+
+    grouped_patients = patient_table.groupby(
+        stratify_column,
+        sort=True,
+        dropna=False,
+    )
+
+    for class_value, class_frame in grouped_patients:
+        patient_ids = np.asarray(
+            sorted(
+                class_frame["patient_id"].tolist()
+            )
+        )
+
+        if len(patient_ids) < 3:
+            raise ValueError(
+                "Stratified train/validation/test split requires "
+                "at least three patients in every class. "
+                f"Class {class_value!r} contains "
+                f"{len(patient_ids)} patients."
+            )
+
+        rng.shuffle(patient_ids)
+
+        split_counts = _calculate_split_counts(
+            number_of_patients=len(patient_ids),
+            fractions=fractions,
+        )
+
+        class_split_map = (
+            _assign_patient_ids_to_splits(
+                patient_ids=patient_ids,
+                split_counts=split_counts,
+            )
+        )
+
+        duplicate_patients = set(
+            complete_split_map
+        ).intersection(class_split_map)
+
+        if duplicate_patients:
+            raise RuntimeError(
+                "Patients appeared in multiple stratification "
+                f"classes: {sorted(duplicate_patients)}"
+            )
+
+        complete_split_map.update(
+            class_split_map
+        )
+
+    return complete_split_map
+
+
+def _assign_patient_ids_to_splits(
+    patient_ids: np.ndarray,
+    split_counts: np.ndarray,
+) -> dict[str, str]:
+    number_of_train_patients = int(
+        split_counts[0]
+    )
+
+    number_of_validation_patients = int(
+        split_counts[1]
+    )
 
     train_end = number_of_train_patients
-    validation_end = train_end + number_of_validation_patients
+
+    validation_end = (
+        train_end
+        + number_of_validation_patients
+    )
 
     train_patients = patient_ids[:train_end]
-    validation_patients = patient_ids[train_end:validation_end]
-    test_patients = patient_ids[validation_end:]
+
+    validation_patients = patient_ids[
+        train_end:validation_end
+    ]
+
+    test_patients = patient_ids[
+        validation_end:
+    ]
 
     split_map: dict[str, str] = {}
 
     split_map.update(
-        _create_split_map(train_patients, split_name="train")
+        _create_split_map(
+            train_patients,
+            split_name="train",
+        )
     )
+
     split_map.update(
         _create_split_map(
             validation_patients,
             split_name="validation",
         )
     )
+
     split_map.update(
-        _create_split_map(test_patients, split_name="test")
+        _create_split_map(
+            test_patients,
+            split_name="test",
+        )
     )
 
-    result = metadata.copy()
-
-    result["patient_id"] = result["patient_id"].astype(str)
-    result["slide_id"] = result["slide_id"].astype(str)
-
-    result["split"] = result["patient_id"].map(split_map)
-
-    if result["split"].isna().any():
-        raise RuntimeError("Some patients were not assigned to a split.")
-
-    validate_metadata(result, require_split=True)
-
-    return result
+    return split_map
 
 
 def _create_split_map(
@@ -245,22 +444,78 @@ def assert_no_patient_leakage(metadata: pd.DataFrame) -> None:
         )
 
 
-def get_split_summary(metadata: pd.DataFrame) -> pd.DataFrame:
+def get_split_label_summary(
+    metadata: pd.DataFrame,
+    label_column: str = "label",
+) -> pd.DataFrame:
     """
-    Возвращает статистику по split:
-    число пациентов, слайдов и патчей.
+    Показывает число пациентов и патчей
+    для каждого сочетания split и label.
     """
-    validate_metadata(metadata, require_split=True)
+    validate_metadata(
+        metadata,
+        require_split=True,
+    )
+
+    if label_column not in metadata.columns:
+        raise ValueError(
+            f"Label column was not found: {label_column!r}"
+        )
+
+    patient_label_counts = (
+        metadata.groupby("patient_id")[
+            label_column
+        ]
+        .nunique(dropna=False)
+    )
+
+    conflicting_patients = patient_label_counts[
+        patient_label_counts > 1
+    ]
+
+    if not conflicting_patients.empty:
+        raise ValueError(
+            "Some patients have multiple labels: "
+            f"{conflicting_patients.index.tolist()}"
+        )
 
     summary = (
-        metadata.groupby("split")
+        metadata
+        .groupby(
+            [
+                "split",
+                label_column,
+            ],
+            dropna=False,
+        )
         .agg(
             patients=("patient_id", "nunique"),
             slides=("slide_id", "nunique"),
             patches=("path", "count"),
         )
-        .reindex(["train", "validation", "test"])
         .reset_index()
+    )
+
+    split_order = {
+        "train": 0,
+        "validation": 1,
+        "test": 2,
+    }
+
+    summary["_split_order"] = (
+        summary["split"].map(split_order)
+    )
+
+    summary = (
+        summary
+        .sort_values(
+            [
+                "_split_order",
+                label_column,
+            ]
+        )
+        .drop(columns="_split_order")
+        .reset_index(drop=True)
     )
 
     return summary

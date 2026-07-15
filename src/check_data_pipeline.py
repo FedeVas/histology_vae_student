@@ -7,7 +7,7 @@ from src.datasets.factory import (
     build_datasets,
     prepare_metadata,
 )
-from src.datasets.split import get_split_summary
+from src.datasets.split import get_split_label_summary
 from src.utils.config import load_config
 from src.utils.device import resolve_device
 from src.utils.reproducibility import seed_everything
@@ -50,7 +50,7 @@ def main() -> None:
 
     print()
     print("Dataset split summary")
-    print(get_split_summary(metadata).to_string(index=False))
+    print(get_split_label_summary(metadata).to_string(index=False))
     print()
 
     batch = next(iter(data_loaders.train))

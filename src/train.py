@@ -15,7 +15,7 @@ from src.datasets.factory import (
     build_datasets,
     prepare_metadata,
 )
-from src.datasets.split import get_split_summary
+from src.datasets.split import get_split_label_summary, get_split_summary
 from src.models.losses import linear_kl_beta
 from src.models.factory import build_model_from_config, get_model_type
 from src.models.vae import ConvolutionalVAE
@@ -326,6 +326,15 @@ def main() -> None:
     print()
     print(get_split_summary(metadata).to_string(index=False))
     print()
+    if "label" in metadata.columns:
+        print("Label distribution by split")
+        print(
+            get_split_label_summary(
+                metadata=metadata,
+                label_column="label",
+            ).to_string(index=False)
+        )
+        print()
 
     model = build_model_from_config(
         config=config,

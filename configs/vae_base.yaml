@@ -33,6 +33,8 @@ data:
     train_fraction: 0.70
     validation_fraction: 0.15
     test_fraction: 0.15
+    stratify_column: null
+    force_reassign: false
 
   augmentation:
     horizontal_flip_probability: 0.5

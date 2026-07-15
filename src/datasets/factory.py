@@ -77,6 +77,56 @@ def prepare_metadata(config: dict) -> pd.DataFrame:
     if "split" not in metadata.columns:
         split_config = data_config["split"]
 
+        force_reassign = bool(
+            split_config.get(
+                "force_reassign",
+                False,
+            )
+        )
+
+        split_is_missing = (
+            "split" not in metadata.columns
+        )
+
+        if split_is_missing or force_reassign:
+            stratify_column = split_config.get(
+                "stratify_column"
+            )
+
+            if stratify_column is not None:
+                stratify_column = str(
+                    stratify_column
+                )
+
+            metadata = assign_patient_splits(
+                metadata=metadata,
+                train_fraction=float(
+                    split_config["train_fraction"]
+                ),
+                validation_fraction=float(
+                    split_config[
+                        "validation_fraction"
+                    ]
+                ),
+                test_fraction=float(
+                    split_config["test_fraction"]
+                ),
+                seed=int(
+                    config["project"]["seed"]
+                ),
+                stratify_column=stratify_column,
+            )
+
+            metadata_path.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            metadata.to_csv(
+                metadata_path,
+                index=False,
+            )
+
         metadata = assign_patient_splits(
             metadata=metadata,
             train_fraction=float(
