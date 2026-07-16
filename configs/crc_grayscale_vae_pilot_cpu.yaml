@@ -15,7 +15,7 @@ data:
   # Для первого CPU-pilot уменьшаем до 128×128.
   image_size: 128
   channels: 3
-  color_mode: rgb
+  color_mode: grayscale
 
   batch_size: 16
   num_workers: 0
@@ -75,7 +75,7 @@ training:
     min_delta: 0.0
 
 logging:
-  run_name: crc_pilot_vae_beta_1
+  run_name: crc_pilot_grayscale_vae_beta_1
 
 evaluation:
   active_unit_variance_threshold: 0.001

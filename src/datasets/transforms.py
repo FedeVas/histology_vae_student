@@ -40,6 +40,7 @@ def build_train_transforms(
     horizontal_flip_probability: float = 0.5,
     vertical_flip_probability: float = 0.5,
     use_random_quarter_turn: bool = True,
+    color_mode: str = "rgb",
 ) -> Callable:
     """
     Transforms для train split.
@@ -51,6 +52,9 @@ def build_train_transforms(
         transforms.Resize(
             size=(image_size, image_size),
             antialias=True,
+        ),
+        *_build_color_transforms(
+            color_mode=color_mode,
         ),
         transforms.RandomHorizontalFlip(
             p=horizontal_flip_probability,
@@ -70,6 +74,7 @@ def build_train_transforms(
 
 def build_evaluation_transforms(
     image_size: int,
+    color_mode: str = "rgb",
 ) -> Callable:
     """
     Детерминированные transforms для validation и test.
@@ -81,5 +86,50 @@ def build_evaluation_transforms(
                 antialias=True,
             ),
             transforms.ToTensor(),
+            *_build_color_transforms(
+                color_mode=color_mode,
+            ),
         ]
     )
+
+
+def _validate_color_mode(
+    color_mode: str,
+) -> str:
+    normalized_color_mode = (
+        str(color_mode).strip().lower()
+    )
+
+    supported_modes = {
+        "rgb",
+        "grayscale",
+    }
+
+    if normalized_color_mode not in supported_modes:
+        raise ValueError(
+            f"Unsupported color mode: "
+            f"{color_mode!r}. "
+            f"Available modes: "
+            f"{sorted(supported_modes)}."
+        )
+
+    return normalized_color_mode
+
+
+def _build_color_transforms(
+    color_mode: str,
+) -> list:
+    normalized_color_mode = (
+        _validate_color_mode(
+            color_mode
+        )
+    )
+
+    if normalized_color_mode == "rgb":
+        return []
+
+    return [
+        transforms.Grayscale(
+            num_output_channels=3,
+        )
+    ]

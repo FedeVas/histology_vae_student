@@ -76,51 +76,120 @@ def load_result(
     ) as file:
         metrics = json.load(file)
 
-    feature_dimensions = metrics.get(
-        "feature_dimensions"
+    # feature_dimensions = metrics.get(
+    #     "feature_dimensions"
+    # )
+
+    # if feature_dimensions is None:
+    #     feature_dimensions = metrics.get(
+    #         "latent_dimensions"
+    #     )
+    input_dimensions = metrics.get(
+        "input_feature_dimensions"
     )
 
-    if feature_dimensions is None:
-        feature_dimensions = metrics.get(
+    if input_dimensions is None:
+        input_dimensions = metrics.get(
+            "feature_dimensions"
+        )
+
+    if input_dimensions is None:
+        input_dimensions = metrics.get(
             "latent_dimensions"
         )
 
+    output_dimensions = metrics.get(
+        "output_feature_dimensions"
+    )
+
+    if output_dimensions is None:
+        output_dimensions = metrics.get(
+            "pca_components"
+        )
+
+    if output_dimensions is None:
+        output_dimensions = input_dimensions
+    
+    validation_metrics = metrics.get(
+        "validation_train_only",
+        metrics["validation"],
+    )
+
+    external_train_only_metrics = metrics.get(
+        "external_test_train_only",
+        metrics["external_test"],
+    )
+
+    external_refit_metrics = metrics.get(
+        "external_test_after_refit",
+        metrics["external_test"],
+    )
     return {
-        "representation": label,
-        "feature_prefix": metrics.get(
-            "feature_prefix",
-            "latent_",
-        ),
-        "feature_dimensions": (
-            feature_dimensions
-        ),
-        "best_c": metrics["best_c"],
-        "validation_balanced_accuracy": (
-            metrics["validation"][
-                "balanced_accuracy"
-            ]
-        ),
-        "external_balanced_accuracy": (
-            metrics["external_test"][
-                "balanced_accuracy"
-            ]
-        ),
-        "external_macro_f1": (
-            metrics["external_test"][
-                "macro_f1"
-            ]
-        ),
-        "external_accuracy": (
-            metrics["external_test"][
-                "accuracy"
-            ]
-        ),
-        "balanced_accuracy_gap": (
-            metrics[
-                "balanced_accuracy_gap"
-            ]
-        ),
-    }
+    "representation": label,
+
+    "feature_prefix": metrics.get(
+        "feature_prefix",
+        "latent_",
+    ),
+
+    "input_dimensions": (
+        input_dimensions
+    ),
+
+    "output_dimensions": (
+        output_dimensions
+    ),
+
+    "best_c": metrics["best_c"],
+
+    "validation_balanced_accuracy": (
+        validation_metrics[
+            "balanced_accuracy"
+        ]
+    ),
+
+    "external_train_only_balanced_accuracy": (
+        external_train_only_metrics[
+            "balanced_accuracy"
+        ]
+    ),
+
+    "external_refit_balanced_accuracy": (
+        external_refit_metrics[
+            "balanced_accuracy"
+        ]
+    ),
+
+    "external_train_only_macro_f1": (
+        external_train_only_metrics[
+            "macro_f1"
+        ]
+    ),
+
+    "external_refit_macro_f1": (
+        external_refit_metrics[
+            "macro_f1"
+        ]
+    ),
+
+    "train_only_gap": float(
+        validation_metrics[
+            "balanced_accuracy"
+        ]
+        - external_train_only_metrics[
+            "balanced_accuracy"
+        ]
+    ),
+
+    "refit_gain": float(
+        external_refit_metrics[
+            "balanced_accuracy"
+        ]
+        - external_train_only_metrics[
+            "balanced_accuracy"
+        ]
+    ),
+}
 
 
 def save_metric_plot(
@@ -209,7 +278,7 @@ def main() -> None:
     save_metric_plot(
         comparison=comparison,
         metric_column=(
-            "external_balanced_accuracy"
+            "external_refit_balanced_accuracy"
         ),
         y_label="Balanced accuracy",
         title=(
@@ -224,7 +293,7 @@ def main() -> None:
 
     save_metric_plot(
         comparison=comparison,
-        metric_column="external_macro_f1",
+        metric_column="external_refit_macro_f1",
         y_label="Macro-F1",
         title="External test macro-F1",
         random_baseline=random_baseline,
@@ -242,11 +311,14 @@ def main() -> None:
         comparison[
             [
                 "representation",
-                "feature_dimensions",
+                "input_dimensions",
+                "output_dimensions",
                 "validation_balanced_accuracy",
-                "external_balanced_accuracy",
-                "external_macro_f1",
-                "balanced_accuracy_gap",
+                "external_train_only_balanced_accuracy",
+                "external_refit_balanced_accuracy",
+                "external_refit_macro_f1",
+                "train_only_gap",
+                "refit_gain",
             ]
         ].to_string(
             index=False

@@ -187,7 +187,8 @@ def test_linear_probe_supports_custom_feature_prefix() -> None:
         ]
         > 0.95
     )
-    
+  
+  
 def test_linear_probe_supports_pca_reduction() -> None:
     train = create_separable_embeddings(
         samples_per_class=30,

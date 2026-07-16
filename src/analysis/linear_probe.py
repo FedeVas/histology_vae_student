@@ -33,11 +33,12 @@ class LinearProbeResult:
     selection_results: pd.DataFrame
 
     validation: ProbeEvaluation
+    test_before_refit: ProbeEvaluation
     test: ProbeEvaluation
 
     final_model: Pipeline
     feature_columns: list[str]
-    feature_prefix: str
+    feature_prefix: strd
     pca_components: int | None
     class_table: pd.DataFrame
 
@@ -240,6 +241,16 @@ def fit_linear_probe(
         class_table=class_table,
         feature_columns=feature_columns
     )
+    
+    test_before_refit_evaluation = _evaluate_model(
+        model=validation_model,
+        embeddings=test_embeddings,
+        x=x_test,
+        y_true=y_test,
+        labels=labels,
+        class_table=class_table,
+        feature_columns=feature_columns
+    )
 
     # После выбора C можно использовать всю внутреннюю выборку.
     x_train_final = np.concatenate(
@@ -283,6 +294,7 @@ def fit_linear_probe(
         best_c=best_c,
         selection_results=selection_results,
         validation=validation_evaluation,
+        test_before_refit=test_before_refit_evaluation,
         test=test_evaluation,
         final_model=final_model,
         feature_columns=feature_columns,

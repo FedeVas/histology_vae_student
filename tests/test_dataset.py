@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 import torch
+from PIL import Image
 
 from src.datasets.patch_dataset import HistologyPatchDataset
 from src.datasets.split import (
@@ -329,3 +330,80 @@ def test_get_split_summary_counts_entities(
     assert (
         summary["slides"] > 0
     ).all()
+
+
+def test_grayscale_transform_returns_three_equal_channels() -> None:
+    image = Image.new(
+        mode="RGB",
+        size=(24, 24),
+        color=(
+            255,
+            40,
+            10,
+        ),
+    )
+
+    transform = (
+        build_evaluation_transforms(
+            image_size=16,
+            color_mode="grayscale",
+        )
+    )
+
+    transformed = transform(image)
+
+    assert transformed.shape == (
+        3,
+        16,
+        16,
+    )
+
+    torch.testing.assert_close(
+        transformed[0],
+        transformed[1],
+    )
+
+    torch.testing.assert_close(
+        transformed[1],
+        transformed[2],
+    )
+
+
+def test_rgb_transform_preserves_three_color_channels() -> None:
+    image = Image.new(
+        mode="RGB",
+        size=(24, 24),
+        color=(
+            255,
+            40,
+            10,
+        ),
+    )
+
+    transform = (
+        build_evaluation_transforms(
+            image_size=16,
+            color_mode="rgb",
+        )
+    )
+
+    transformed = transform(image)
+
+    assert transformed.shape == (
+        3,
+        16,
+        16,
+    )
+
+    assert not torch.allclose(
+        transformed[0],
+        transformed[1],
+    )
+
+
+def test_transform_rejects_unknown_color_mode() -> None:
+    with pytest.raises(ValueError):
+        build_evaluation_transforms(
+            image_size=16,
+            color_mode="lab",
+        )

@@ -186,10 +186,17 @@ def build_datasets(
     Создаёт train, validation и test datasets.
     """
     data_config = config["data"]
+    color_mode = str(
+        data_config.get(
+            "color_mode",
+            "rgb",
+        )
+    )
     augmentation_config = data_config["augmentation"]
 
     train_transform = build_train_transforms(
         image_size=int(data_config["image_size"]),
+        color_mode=color_mode,
         horizontal_flip_probability=float(
             augmentation_config[
                 "horizontal_flip_probability"
@@ -206,7 +213,8 @@ def build_datasets(
     )
 
     evaluation_transform = build_evaluation_transforms(
-        image_size=int(data_config["image_size"])
+        image_size=int(data_config["image_size"]),
+        color_mode=color_mode,
     )
 
     common_arguments = {
@@ -327,6 +335,12 @@ def build_evaluation_data_loader(
         build_evaluation_transforms(
             image_size=int(
                 data_config["image_size"]
+            ),
+            color_mode=str(
+                data_config.get(
+                    "color_mode",
+                    "rgb",
+                )
             )
         )
     )

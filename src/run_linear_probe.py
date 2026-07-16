@@ -229,14 +229,25 @@ def main() -> None:
     metrics = {
         "best_c": result.best_c,
         "feature_prefix": result.feature_prefix,
-        "feature_dimensions": len(
+
+        # Размерность исходных признаков до PCA.
+        "input_feature_dimensions": len(
             result.feature_columns
         ),
-        "latent_dimensions": (
-            len(result.feature_columns)
-            if result.feature_prefix == "latent_"
-            else None
+
+        # None, если PCA не используется.
+        "pca_components": (
+            result.pca_components
         ),
+
+        # Размерность признаков, поступающих
+        # непосредственно в LogisticRegression.
+        "output_feature_dimensions": (
+            result.pca_components
+            if result.pca_components is not None
+            else len(result.feature_columns)
+        ),
+
         "train_images": int(
             len(train_embeddings)
         ),
@@ -246,12 +257,78 @@ def main() -> None:
         "external_test_images": int(
             len(test_embeddings)
         ),
+
+        # Модель обучена только на train.
+        "validation_train_only": (
+            result.validation.metrics
+        ),
+
+        # Та же самая train-only модель,
+        # применённая к external test.
+        "external_test_train_only": (
+            result.test_before_refit.metrics
+        ),
+
+        # Финальная модель после переобучения
+        # на train + validation.
+        "external_test_after_refit": (
+            result.test.metrics
+        ),
+
+        # Сохраняем старые ключи для совместимости
+        # с уже написанными скриптами.
         "validation": (
             result.validation.metrics
         ),
         "external_test": (
             result.test.metrics
         ),
+
+        # Честный domain gap:
+        # validation и external test оценены
+        # одной и той же train-only моделью.
+        "balanced_accuracy_gap_train_only": float(
+            result.validation.metrics[
+                "balanced_accuracy"
+            ]
+            - result.test_before_refit.metrics[
+                "balanced_accuracy"
+            ]
+        ),
+
+        "macro_f1_gap_train_only": float(
+            result.validation.metrics[
+                "macro_f1"
+            ]
+            - result.test_before_refit.metrics[
+                "macro_f1"
+            ]
+        ),
+
+        # Насколько переобучение на train + validation
+        # изменило результат external test.
+        "external_refit_gain": float(
+            result.test.metrics[
+                "balanced_accuracy"
+            ]
+            - result.test_before_refit.metrics[
+                "balanced_accuracy"
+            ]
+        ),
+
+        "external_refit_macro_f1_gain": float(
+            result.test.metrics[
+                "macro_f1"
+            ]
+            - result.test_before_refit.metrics[
+                "macro_f1"
+            ]
+        ),
+
+        # Старые поля оставляем только для совместимости.
+        # Они сравнивают validation train-only модели
+        # с test после refit, поэтому для научной
+        # интерпретации их использовать не следует.
         "balanced_accuracy_gap": float(
             result.validation.metrics[
                 "balanced_accuracy"
@@ -260,6 +337,7 @@ def main() -> None:
                 "balanced_accuracy"
             ]
         ),
+
         "macro_f1_gap": float(
             result.validation.metrics[
                 "macro_f1"
@@ -268,14 +346,22 @@ def main() -> None:
                 "macro_f1"
             ]
         ),
-        "input_feature_dimensions": len(
+
+        # Совместимость со старыми версиями
+        # compare_probe_baselines.py.
+        "feature_dimensions": len(
             result.feature_columns
         ),
-        "pca_components": result.pca_components,
-        "output_feature_dimensions": (
-            result.pca_components
-            if result.pca_components is not None
-            else len(result.feature_columns)
+
+        "latent_dimensions": (
+            len(result.feature_columns)
+            if result.feature_prefix == "latent_"
+            and result.pca_components is None
+            else (
+                result.pca_components
+                if result.feature_prefix == "latent_"
+                else None
+            )
         ),
     }
 
@@ -326,14 +412,23 @@ def main() -> None:
             f"  {metric_name:20s} "
             f"{metric_value:.4f}"
         )
-
     print()
-    print("External test")
+    print()
+    print("External test — train-only model")
+
+    for metric_name, metric_value in (
+        result.test_before_refit.metrics.items()
+    ):
+        print(
+            f"  {metric_name:24s} "
+            f"{metric_value:.4f}"
+        )
+    print("External test — after train+validation refit")
     for metric_name, metric_value in (
         result.test.metrics.items()
     ):
         print(
-            f"  {metric_name:20s} "
+            f"  {metric_name:24s} "
             f"{metric_value:.4f}"
         )
 
@@ -342,7 +437,16 @@ def main() -> None:
         "Balanced accuracy gap: "
         f"{metrics['balanced_accuracy_gap']:.4f}"
     )
+    print()
+    print(
+        "Train-only balanced accuracy gap: "
+        f"{metrics['balanced_accuracy_gap_train_only']:.4f}"
+    )
 
+    print(
+        "External refit gain: "
+        f"{metrics['external_refit_gain']:.4f}"
+    )
     print(
         f"Results: "
         f"{arguments.output_dir.resolve()}"
