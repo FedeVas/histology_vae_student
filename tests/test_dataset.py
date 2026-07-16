@@ -9,6 +9,7 @@ from src.datasets.split import (
     assign_patient_splits,
     assert_no_patient_leakage,
     get_split_label_summary,
+    get_split_summary
 )
 from src.datasets.synthetic import (
     generate_synthetic_histology_dataset,
@@ -233,3 +234,98 @@ def test_stratified_split_rejects_multiple_labels_per_patient() -> None:
             metadata=metadata,
             stratify_column="label",
         )
+
+
+def test_dataset_preserves_optional_biological_metadata(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "tumor_patch.png"
+
+    from PIL import Image
+
+    Image.new(
+        mode="RGB",
+        size=(32, 32),
+        color=(180, 120, 160),
+    ).save(image_path)
+
+    metadata = pd.DataFrame(
+        [
+            {
+                "sample_id": "sample_001",
+                "path": image_path.as_posix(),
+                "patient_id": (
+                    "patch_fallback:sample_001"
+                ),
+                "slide_id": (
+                    "patch_fallback:sample_001"
+                ),
+                "source": "public_dataset",
+                "class_code": "TUM",
+                "class_name": (
+                    "colorectal adenocarcinoma "
+                    "epithelium"
+                ),
+                "label": 8,
+                "split": "train",
+                "group_id_source": (
+                    "patch_id_fallback"
+                ),
+            }
+        ]
+    )
+
+    dataset = HistologyPatchDataset(
+        metadata=metadata,
+        split="train",
+        transform=build_evaluation_transforms(
+            image_size=32
+        ),
+    )
+
+    sample = dataset[0]
+
+    assert sample["sample_id"] == "sample_001"
+    assert sample["class_code"] == "TUM"
+
+    assert sample["class_name"] == (
+        "colorectal adenocarcinoma "
+        "epithelium"
+    )
+
+    assert sample["source"] == "public_dataset"
+
+    assert sample["group_id_source"] == (
+        "patch_id_fallback"
+    )
+
+
+def test_get_split_summary_counts_entities(
+    tmp_path: Path,
+) -> None:
+    metadata = create_test_metadata(
+        tmp_path
+    )
+
+    summary = (
+        get_split_summary(metadata)
+        .set_index("split")
+    )
+
+    assert set(summary.index) == {
+        "train",
+        "validation",
+        "test",
+    }
+
+    assert int(
+        summary["patches"].sum()
+    ) == len(metadata)
+
+    assert (
+        summary["patients"] > 0
+    ).all()
+
+    assert (
+        summary["slides"] > 0
+    ).all()

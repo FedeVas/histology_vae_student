@@ -107,8 +107,25 @@ class HistologyPatchDataset(Dataset):
             "slide_id": str(row["slide_id"]),
         }
 
-        if "patch_id" in row.index:
-            sample["patch_id"] = str(row["patch_id"])
+        optional_string_fields = (
+            "sample_id",
+            "patch_id",
+            "class_code",
+            "class_name",
+            "source",
+            "group_id_source",
+        )
+
+        for field_name in optional_string_fields:
+            if field_name not in row.index:
+                continue
+
+            field_value = row[field_name]
+
+            if pd.isna(field_value):
+                continue
+
+            sample[field_name] = str(field_value)
 
         return sample
 

@@ -40,91 +40,105 @@ class DataLoaderBundle:
 
 def prepare_metadata(config: dict) -> pd.DataFrame:
     """
-    Загружает metadata или создаёт synthetic dataset.
+    Загружает готовую metadata.
 
-    Если split ещё отсутствует, назначает его на уровне пациентов.
+    Если metadata отсутствует и включён synthetic mode,
+    создаёт synthetic dataset.
+
+    Готовые публичные datasets должны предоставлять
+    metadata CSV с уже назначенной колонкой split.
     """
     data_config = config["data"]
-    synthetic_config = data_config["synthetic"]
 
-    metadata_path = Path(data_config["metadata_csv"])
+    synthetic_config = data_config.get(
+        "synthetic",
+        {},
+    )
+
+    metadata_path = Path(
+        data_config["metadata_csv"]
+    )
 
     if metadata_path.exists():
-        metadata = pd.read_csv(metadata_path)
-    else:
-        if not bool(synthetic_config["enabled"]):
-            raise FileNotFoundError(
-                "Metadata file does not exist and synthetic generation "
-                f"is disabled: {metadata_path.resolve()}"
-            )
-
-        metadata = generate_synthetic_histology_dataset(
-            output_dir=synthetic_config["output_dir"],
-            metadata_path=metadata_path,
-            num_patients=int(
-                synthetic_config["num_patients"]
-            ),
-            slides_per_patient=int(
-                synthetic_config["slides_per_patient"]
-            ),
-            patches_per_slide=int(
-                synthetic_config["patches_per_slide"]
-            ),
-            image_size=int(data_config["image_size"]),
-            seed=int(config["project"]["seed"]),
+        metadata = pd.read_csv(
+            metadata_path
         )
 
-    if "split" not in metadata.columns:
-        split_config = data_config["split"]
-
-        force_reassign = bool(
-            split_config.get(
-                "force_reassign",
+    else:
+        synthetic_enabled = bool(
+            synthetic_config.get(
+                "enabled",
                 False,
             )
         )
 
-        split_is_missing = (
-            "split" not in metadata.columns
-        )
-
-        if split_is_missing or force_reassign:
-            stratify_column = split_config.get(
-                "stratify_column"
+        if not synthetic_enabled:
+            raise FileNotFoundError(
+                "Metadata file does not exist and "
+                "synthetic generation is disabled: "
+                f"{metadata_path.resolve()}"
             )
 
-            if stratify_column is not None:
-                stratify_column = str(
-                    stratify_column
-                )
-
-            metadata = assign_patient_splits(
-                metadata=metadata,
-                train_fraction=float(
-                    split_config["train_fraction"]
-                ),
-                validation_fraction=float(
-                    split_config[
-                        "validation_fraction"
+        metadata = (
+            generate_synthetic_histology_dataset(
+                output_dir=synthetic_config[
+                    "output_dir"
+                ],
+                metadata_path=metadata_path,
+                num_patients=int(
+                    synthetic_config[
+                        "num_patients"
                     ]
                 ),
-                test_fraction=float(
-                    split_config["test_fraction"]
+                slides_per_patient=int(
+                    synthetic_config[
+                        "slides_per_patient"
+                    ]
+                ),
+                patches_per_slide=int(
+                    synthetic_config[
+                        "patches_per_slide"
+                    ]
+                ),
+                image_size=int(
+                    data_config["image_size"]
                 ),
                 seed=int(
                     config["project"]["seed"]
                 ),
-                stratify_column=stratify_column,
+            )
+        )
+
+    split_config = data_config.get(
+        "split",
+        {},
+    )
+
+    force_reassign = bool(
+        split_config.get(
+            "force_reassign",
+            False,
+        )
+    )
+
+    split_is_missing = (
+        "split" not in metadata.columns
+    )
+
+    if split_is_missing or force_reassign:
+        if not split_config:
+            raise ValueError(
+                "Metadata does not contain split and "
+                "data.split configuration is missing."
             )
 
-            metadata_path.parent.mkdir(
-                parents=True,
-                exist_ok=True,
-            )
+        stratify_column = split_config.get(
+            "stratify_column"
+        )
 
-            metadata.to_csv(
-                metadata_path,
-                index=False,
+        if stratify_column is not None:
+            stratify_column = str(
+                stratify_column
             )
 
         metadata = assign_patient_splits(
@@ -133,12 +147,17 @@ def prepare_metadata(config: dict) -> pd.DataFrame:
                 split_config["train_fraction"]
             ),
             validation_fraction=float(
-                split_config["validation_fraction"]
+                split_config[
+                    "validation_fraction"
+                ]
             ),
             test_fraction=float(
                 split_config["test_fraction"]
             ),
-            seed=int(config["project"]["seed"]),
+            seed=int(
+                config["project"]["seed"]
+            ),
+            stratify_column=stratify_column,
         )
 
         metadata_path.parent.mkdir(

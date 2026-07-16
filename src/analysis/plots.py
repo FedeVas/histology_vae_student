@@ -51,15 +51,27 @@ def create_pca_embedding_plot(
         standardized_latent_values
     )
 
+    possible_metadata_columns = (
+        "sample_id",
+        "path",
+        "patient_id",
+        "slide_id",
+        "patch_id",
+        "source",
+        "class_code",
+        "class_name",
+        "label",
+        "split",
+    )
+
+    metadata_columns = [
+        column
+        for column in possible_metadata_columns
+        if column in embeddings.columns
+    ]
+
     result = embeddings[
-        [
-            "path",
-            "patient_id",
-            "slide_id",
-            "patch_id",
-            "label",
-            "split",
-        ]
+        metadata_columns
     ].copy()
 
     result["pca_1"] = coordinates[:, 0]
@@ -76,33 +88,65 @@ def create_pca_embedding_plot(
         figsize=(8, 6)
     )
 
-    valid_labels = sorted(
-        result.loc[
-            result["label"] >= 0,
-            "label",
-        ].unique()
-    )
+    if (
+        "class_code" in result.columns
+        and result["class_code"].ne("").any()
+    ):
+        group_column = "class_code"
 
-    if len(valid_labels) > 1:
-        for label in valid_labels:
-            label_mask = (
-                result["label"] == label
+        groups = sorted(
+            result.loc[
+                result["class_code"].ne(""),
+                "class_code",
+            ].unique()
+        )
+
+    else:
+        group_column = "label"
+
+        groups = sorted(
+            result.loc[
+                result["label"] >= 0,
+                "label",
+            ].unique()
+        )
+
+    if len(groups) > 1:
+        for group_value in groups:
+            group_mask = (
+                result[group_column]
+                == group_value
             )
 
             axis.scatter(
-                result.loc[label_mask, "pca_1"],
-                result.loc[label_mask, "pca_2"],
-                label=f"Label {label}",
-                alpha=0.75,
+                result.loc[
+                    group_mask,
+                    "pca_1",
+                ],
+                result.loc[
+                    group_mask,
+                    "pca_2",
+                ],
+                label=str(group_value),
+                alpha=0.70,
+                s=20,
             )
 
-        axis.legend()
+        axis.legend(
+            title="Tissue class",
+            bbox_to_anchor=(
+                1.02,
+                1.0,
+            ),
+            loc="upper left",
+        )
 
     else:
         axis.scatter(
             result["pca_1"],
             result["pca_2"],
-            alpha=0.75,
+            alpha=0.70,
+            s=20,
         )
 
     explained_variance = (

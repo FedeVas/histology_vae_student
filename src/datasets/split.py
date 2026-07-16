@@ -444,6 +444,46 @@ def assert_no_patient_leakage(metadata: pd.DataFrame) -> None:
         )
 
 
+def get_split_summary(
+    metadata: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Возвращает общую статистику по каждому split:
+
+    - число уникальных пациентов;
+    - число уникальных слайдов;
+    - число патчей.
+
+    Важно: если metadata использует технические fallback ID,
+    значения patients и slides нельзя интерпретировать
+    как реальные числа пациентов и слайдов.
+    """
+    validate_metadata(
+        metadata,
+        require_split=True,
+    )
+
+    summary = (
+        metadata
+        .groupby("split")
+        .agg(
+            patients=("patient_id", "nunique"),
+            slides=("slide_id", "nunique"),
+            patches=("path", "count"),
+        )
+        .reindex(
+            [
+                "train",
+                "validation",
+                "test",
+            ]
+        )
+        .reset_index()
+    )
+
+    return summary
+
+
 def get_split_label_summary(
     metadata: pd.DataFrame,
     label_column: str = "label",

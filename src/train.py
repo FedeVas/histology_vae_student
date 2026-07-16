@@ -18,7 +18,6 @@ from src.datasets.factory import (
 from src.datasets.split import get_split_label_summary, get_split_summary
 from src.models.losses import linear_kl_beta
 from src.models.factory import build_model_from_config, get_model_type
-from src.models.vae import ConvolutionalVAE
 from src.training.checkpoints import (
     load_training_checkpoint,
     save_model_state,
@@ -324,15 +323,123 @@ def main() -> None:
     print(f"Device: {runtime.device}")
     print(f"Mixed precision: {runtime.mixed_precision}")
     print()
-    print(get_split_summary(metadata).to_string(index=False))
+    uses_patch_fallback = (
+        "group_id_source" in metadata.columns
+        and metadata[
+            "group_id_source"
+        ].eq(
+            "patch_id_fallback"
+        ).all()
+    )
+
+    if uses_patch_fallback:
+        print(
+            "Dataset split summary "
+            "(patient and slide IDs unavailable)"
+        )
+
+        split_summary = (
+            metadata
+            .groupby("split")
+            .agg(
+                images=("path", "count"),
+                classes=("label", "nunique"),
+                sources=("source", "nunique"),
+            )
+            .reindex(
+                [
+                    "train",
+                    "validation",
+                    "test",
+                ]
+            )
+            .reset_index()
+        )
+
+        print(
+            split_summary.to_string(
+                index=False
+            )
+        )
+
+        print()
+        print(
+            "Internal validation is patch-level. "
+            "Fallback group IDs must not be interpreted "
+            "as patient or slide identifiers."
+        )
+
+    else:
+        print(
+            get_split_summary(
+                metadata
+            ).to_string(index=False)
+        )
+
     print()
     if "label" in metadata.columns:
-        print("Label distribution by split")
+        print("Class distribution by split")
+
+        if uses_patch_fallback:
+            grouping_columns = [
+                "split",
+                "label",
+            ]
+
+            if "class_code" in metadata.columns:
+                grouping_columns.insert(
+                    1,
+                    "class_code",
+                )
+
+            class_summary = (
+                metadata
+                .groupby(
+                    grouping_columns,
+                    dropna=False,
+                )
+                .agg(
+                    images=("path", "count"),
+                )
+                .reset_index()
+            )
+
+            split_order = {
+                "train": 0,
+                "validation": 1,
+                "test": 2,
+            }
+
+            class_summary["_split_order"] = (
+                class_summary["split"].map(split_order)
+            )
+
+            class_summary = (
+                class_summary
+                .sort_values(
+                    [
+                        "_split_order",
+                        "label",
+                    ]
+                )
+                .drop(
+                    columns="_split_order"
+                )
+                .reset_index(drop=True)
+            )
+
+        else:
+            class_summary = (
+                get_split_label_summary(
+                    metadata=metadata,
+                    label_column="label",
+                )
+            )
+
         print(
-            get_split_label_summary(
-                metadata=metadata,
-                label_column="label",
-            ).to_string(index=False)
+            class_summary.to_string(
+                index=False
+            )
         )
         print()
 

@@ -44,6 +44,10 @@ def evaluate_representation_model(
     slide_ids: list[str] = []
     patch_ids: list[str] = []
     labels: list[int] = []
+    sample_ids: list[str] = []
+    class_codes: list[str] = []
+    class_names: list[str] = []
+    sources: list[str] = []
 
     has_log_var: bool | None = None
 
@@ -102,7 +106,23 @@ def evaluate_representation_model(
             )
 
         batch_size = images.shape[0]
+        optional_batch_fields = (
+            ("sample_id", sample_ids),
+            ("class_code", class_codes),
+            ("class_name", class_names),
+            ("source", sources),
+        )
 
+        for field_name, target_list in optional_batch_fields:
+            if field_name in batch:
+                target_list.extend(
+                    str(value)
+                    for value in batch[field_name]
+                )
+            else:
+                target_list.extend(
+                    ["" for _ in range(batch_size)]
+                )
         paths.extend(
             str(value)
             for value in batch["path"]
@@ -165,10 +185,14 @@ def evaluate_representation_model(
 
     metadata_frame = pd.DataFrame(
         {
+            "sample_id": sample_ids,
             "path": paths,
             "patient_id": patient_ids,
             "slide_id": slide_ids,
             "patch_id": patch_ids,
+            "source": sources,
+            "class_code": class_codes,
+            "class_name": class_names,
             "label": labels,
             "split": split_name,
         }
