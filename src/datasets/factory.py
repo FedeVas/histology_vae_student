@@ -292,3 +292,65 @@ def _create_data_loader(
         worker_init_fn=seed_data_loader_worker,
         generator=create_torch_generator(seed),
     )
+
+
+def build_evaluation_data_loader(
+    config: dict,
+    metadata: pd.DataFrame,
+    split: str,
+    pin_memory: bool,
+) -> DataLoader:
+    """
+    Создаёт детерминированный DataLoader для извлечения
+    embeddings из train, validation или test.
+
+    В отличие от training loader:
+    - не применяет случайные augmentation;
+    - не перемешивает изображения;
+    - не удаляет последний неполный batch.
+    """
+    allowed_splits = {
+        "train",
+        "validation",
+        "test",
+    }
+
+    if split not in allowed_splits:
+        raise ValueError(
+            f"Unknown split: {split!r}. "
+            f"Expected one of {sorted(allowed_splits)}."
+        )
+
+    data_config = config["data"]
+
+    evaluation_transform = (
+        build_evaluation_transforms(
+            image_size=int(
+                data_config["image_size"]
+            )
+        )
+    )
+
+    dataset = HistologyPatchDataset(
+        metadata=metadata,
+        split=split,
+        transform=evaluation_transform,
+    )
+
+    number_of_workers = int(
+        data_config["num_workers"]
+    )
+
+    return DataLoader(
+        dataset=dataset,
+        batch_size=int(
+            data_config["batch_size"]
+        ),
+        shuffle=False,
+        num_workers=number_of_workers,
+        pin_memory=pin_memory,
+        drop_last=False,
+        persistent_workers=(
+            number_of_workers > 0
+        ),
+    )

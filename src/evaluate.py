@@ -16,8 +16,7 @@ from src.analysis.plots import (
     create_pca_embedding_plot,
 )
 from src.datasets.factory import (
-    build_data_loaders,
-    build_datasets,
+    build_evaluation_data_loader,
     prepare_metadata,
 )
 from src.models.factory import (
@@ -158,20 +157,13 @@ def main() -> None:
 
     metadata = prepare_metadata(config)
 
-    datasets = build_datasets(
-        config=config,
-        metadata=metadata,
-    )
-
-    data_loaders = build_data_loaders(
-        config=config,
-        datasets=datasets,
-        pin_memory=runtime.pin_memory,
-    )
-
-    selected_loader = getattr(
-        data_loaders,
-        arguments.split,
+    selected_loader = (
+        build_evaluation_data_loader(
+            config=config,
+            metadata=metadata,
+            split=arguments.split,
+            pin_memory=runtime.pin_memory,
+        )
     )
 
     model = build_model_from_config(
