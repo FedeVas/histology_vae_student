@@ -67,6 +67,26 @@ def parse_arguments() -> argparse.Namespace:
         default=42,
     )
 
+    parser.add_argument(
+        "--feature-prefix",
+        type=str,
+        default="latent_",
+        help=(
+            "Prefix of classifier feature columns, "
+            "for example latent_ or color_."
+        ),
+    )
+    
+    parser.add_argument(
+        "--pca-components",
+        type=int,
+        default=None,
+        help=(
+            "Optional PCA dimensionality applied, "
+            "inside the training pipeline."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -93,6 +113,8 @@ def main() -> None:
         test_embeddings=test_embeddings,
         c_values=arguments.c_values,
         seed=arguments.seed,
+        feature_prefix=arguments.feature_prefix,
+        pca_components=arguments.pca_components,
     )
 
     arguments.output_dir.mkdir(
@@ -206,8 +228,14 @@ def main() -> None:
 
     metrics = {
         "best_c": result.best_c,
-        "latent_dimensions": len(
+        "feature_prefix": result.feature_prefix,
+        "feature_dimensions": len(
             result.feature_columns
+        ),
+        "latent_dimensions": (
+            len(result.feature_columns)
+            if result.feature_prefix == "latent_"
+            else None
         ),
         "train_images": int(
             len(train_embeddings)
@@ -240,6 +268,15 @@ def main() -> None:
                 "macro_f1"
             ]
         ),
+        "input_feature_dimensions": len(
+            result.feature_columns
+        ),
+        "pca_components": result.pca_components,
+        "output_feature_dimensions": (
+            result.pca_components
+            if result.pca_components is not None
+            else len(result.feature_columns)
+        ),
     }
 
     with (
@@ -260,6 +297,26 @@ def main() -> None:
 
     print(f"Best C: {result.best_c:g}")
 
+    print(
+        f"Feature prefix: {result.feature_prefix!r}"
+    )
+    
+    print(
+        f"Feature dimensions: "
+        f"{len(result.feature_columns)}"
+    )
+    print(
+        f"Input dimensions:     "
+        f"{len(result.feature_columns)}"
+    )
+
+    if result.pca_components is None:
+        print("PCA components:       disabled")
+    else:
+        print(
+            f"PCA components:       "
+            f"{result.pca_components}"
+        )
     print()
     print("Validation")
     for metric_name, metric_value in (

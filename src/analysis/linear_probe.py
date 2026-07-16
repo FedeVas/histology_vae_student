@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from sklearn.decomposition import PCA
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
@@ -36,6 +37,8 @@ class LinearProbeResult:
 
     final_model: Pipeline
     feature_columns: list[str]
+    feature_prefix: str
+    pca_components: int | None
     class_table: pd.DataFrame
 
 
@@ -45,6 +48,8 @@ def fit_linear_probe(
     test_embeddings: pd.DataFrame,
     c_values: list[float],
     seed: int = 42,
+    feature_prefix: str = "latent_",
+    pca_components: int | None = None,
 ) -> LinearProbeResult:
     """
     Выбирает regularization C на validation и оценивает
@@ -52,6 +57,10 @@ def fit_linear_probe(
 
     VAE и его embeddings при этом не изменяются.
     """
+    if not feature_prefix:
+        raise ValueError(
+            "feature_prefix must be a non-empty string."
+        )
     if not c_values:
         raise ValueError(
             "c_values must contain at least one value."
@@ -68,7 +77,27 @@ def fit_linear_probe(
             validation_embeddings
         ),
         test_embeddings=test_embeddings,
+        feature_prefix=feature_prefix
     )
+    
+    if pca_components is not None:
+        if pca_components <= 0:
+            raise ValueError(
+                "pca_components must be a positive integer or None."
+            )
+        
+        maximum_components = min(
+            len(train_embeddings),
+            len(feature_columns)
+        )
+        
+        if pca_components > maximum_components:
+            raise ValueError(
+                "pca_components exceeds the maximum "
+                "supported dimensionality. "
+                f"Requested {pca_components}, "
+                f"maximum {maximum_components}."
+            )
 
     class_table = _build_class_table(
         [
@@ -117,6 +146,7 @@ def fit_linear_probe(
         candidate_model = _build_probe_model(
             c_value=float(c_value),
             seed=seed,
+            pca_components=pca_components
         )
 
         candidate_model.fit(
@@ -193,6 +223,7 @@ def fit_linear_probe(
     validation_model = _build_probe_model(
         c_value=best_c,
         seed=seed,
+        pca_components=pca_components
     )
 
     validation_model.fit(
@@ -207,6 +238,7 @@ def fit_linear_probe(
         y_true=y_validation,
         labels=labels,
         class_table=class_table,
+        feature_columns=feature_columns
     )
 
     # После выбора C можно использовать всю внутреннюю выборку.
@@ -229,6 +261,7 @@ def fit_linear_probe(
     final_model = _build_probe_model(
         c_value=best_c,
         seed=seed,
+        pca_components=pca_components
     )
 
     final_model.fit(
@@ -243,6 +276,7 @@ def fit_linear_probe(
         y_true=y_test,
         labels=labels,
         class_table=class_table,
+        feature_columns=feature_columns,
     )
 
     return LinearProbeResult(
@@ -252,6 +286,8 @@ def fit_linear_probe(
         test=test_evaluation,
         final_model=final_model,
         feature_columns=feature_columns,
+        feature_prefix=feature_prefix,
+        pca_components=pca_components,
         class_table=class_table,
     )
 
@@ -259,24 +295,39 @@ def fit_linear_probe(
 def _build_probe_model(
     c_value: float,
     seed: int,
+    pca_components: int | None = None,
 ) -> Pipeline:
-    return Pipeline(
-        steps=[
+    steps: list[tuple[str, object]] = [
+        (
+            "scaler",
+            StandardScaler(),
+        ),
+    ]
+
+    if pca_components is not None:
+        steps.append(
             (
-                "scaler",
-                StandardScaler(),
-            ),
-            (
-                "classifier",
-                LogisticRegression(
-                    C=c_value,
-                    solver="lbfgs",
-                    max_iter=5000,
+                "pca",
+                PCA(
+                    n_components=pca_components,
                     random_state=seed,
                 ),
+            )
+        )
+
+    steps.append(
+        (
+            "classifier",
+            LogisticRegression(
+                C=c_value,
+                solver="lbfgs",
+                max_iter=5000,
+                random_state=seed,
             ),
-        ]
+        )
     )
+
+    return Pipeline(steps=steps)
 
 
 def _evaluate_model(
@@ -286,6 +337,7 @@ def _evaluate_model(
     y_true: np.ndarray,
     labels: list[int],
     class_table: pd.DataFrame,
+    feature_columns: list[str],
 ) -> ProbeEvaluation:
     y_pred = model.predict(x)
     probabilities = model.predict_proba(x)
@@ -365,6 +417,7 @@ def _evaluate_model(
         probabilities=probabilities,
         labels=labels,
         class_table=class_table,
+        feature_columns=feature_columns
     )
 
     return ProbeEvaluation(
@@ -420,11 +473,13 @@ def _build_prediction_frame(
     probabilities: np.ndarray,
     labels: list[int],
     class_table: pd.DataFrame,
+    feature_columns: list[str],
 ) -> pd.DataFrame:
+    feature_column_set = set(feature_columns)
     metadata_columns = [
         column
         for column in embeddings.columns
-        if not column.startswith("latent_")
+        if column not in feature_column_set
     ]
 
     predictions = (
@@ -485,6 +540,7 @@ def _validate_embeddings(
     train_embeddings: pd.DataFrame,
     validation_embeddings: pd.DataFrame,
     test_embeddings: pd.DataFrame,
+    feature_prefix: str
 ) -> list[str]:
     frames = {
         "train": train_embeddings,
@@ -495,12 +551,12 @@ def _validate_embeddings(
     train_feature_columns = [
         column
         for column in train_embeddings.columns
-        if column.startswith("latent_")
+        if column.startswith(feature_prefix)
     ]
 
     if not train_feature_columns:
         raise ValueError(
-            "No latent feature columns were found."
+            f"No feature columns found for prefix {feature_prefix!r}."
         )
 
     for split_name, frame in frames.items():
@@ -518,7 +574,7 @@ def _validate_embeddings(
         current_feature_columns = [
             column
             for column in frame.columns
-            if column.startswith("latent_")
+            if column.startswith(feature_prefix)
         ]
 
         if (
@@ -526,8 +582,9 @@ def _validate_embeddings(
             != train_feature_columns
         ):
             raise ValueError(
-                "Latent feature columns differ "
-                f"for split {split_name!r}."
+                "Feature columns differ between splits "
+                f"for prefix {feature_prefix!r}. "
+                f"Problematic split: {split_name!r}."
             )
 
         if frame[

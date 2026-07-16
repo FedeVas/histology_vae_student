@@ -116,3 +116,117 @@ def test_linear_probe_classifies_separable_embeddings() -> None:
         0.1,
         1.0,
     }
+    
+
+def test_linear_probe_supports_custom_feature_prefix() -> None:
+    train = create_separable_embeddings(
+        samples_per_class=30,
+        seed=11,
+    ).rename(
+        columns=lambda column: (
+            column.replace(
+                "latent_",
+                "color_",
+            )
+            if column.startswith("latent_")
+            else column
+        )
+    )
+
+    validation = create_separable_embeddings(
+        samples_per_class=10,
+        seed=12,
+    ).rename(
+        columns=lambda column: (
+            column.replace(
+                "latent_",
+                "color_",
+            )
+            if column.startswith("latent_")
+            else column
+        )
+    )
+
+    test = create_separable_embeddings(
+        samples_per_class=10,
+        seed=13,
+    ).rename(
+        columns=lambda column: (
+            column.replace(
+                "latent_",
+                "color_",
+            )
+            if column.startswith("latent_")
+            else column
+        )
+    )
+
+    result = fit_linear_probe(
+        train_embeddings=train,
+        validation_embeddings=validation,
+        test_embeddings=test,
+        c_values=[
+            0.01,
+            0.1,
+            1.0,
+        ],
+        seed=42,
+        feature_prefix="color_",
+    )
+
+    assert result.feature_prefix == "color_"
+
+    assert all(
+        column.startswith("color_")
+        for column in result.feature_columns
+    )
+
+    assert (
+        result.test.metrics[
+            "balanced_accuracy"
+        ]
+        > 0.95
+    )
+    
+def test_linear_probe_supports_pca_reduction() -> None:
+    train = create_separable_embeddings(
+        samples_per_class=30,
+        seed=21,
+    )
+
+    validation = create_separable_embeddings(
+        samples_per_class=10,
+        seed=22,
+    )
+
+    test = create_separable_embeddings(
+        samples_per_class=10,
+        seed=23,
+    )
+
+    result = fit_linear_probe(
+        train_embeddings=train,
+        validation_embeddings=validation,
+        test_embeddings=test,
+        c_values=[
+            0.01,
+            0.1,
+            1.0,
+        ],
+        seed=42,
+        feature_prefix="latent_",
+        pca_components=3,
+    )
+
+    assert result.pca_components == 3
+
+    assert "pca" in (
+        result.final_model.named_steps
+    )
+
+    assert (
+        result.test.metrics[
+            "balanced_accuracy"
+        ]
+        > 0.95
+    )
