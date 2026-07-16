@@ -42,6 +42,9 @@ outputs/
 runs/
 logs/
 
+# Public datasets are downloaded separately
+data/external/
+
 # TensorBoard
 events.out.tfevents.*
 

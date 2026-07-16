@@ -1,0 +1,38 @@
+project:
+  seed: 42
+  output_dir: outputs
+
+dataset:
+  name: nct_crc_he
+
+  train_root: data/external/NCT-CRC-HE-100K
+  external_test_root: data/external/CRC-VAL-HE-7K
+
+  metadata_csv: data/metadata/crc_pilot_metadata.csv
+  audit_dir: outputs/data_audit/crc_pilot
+
+  # В NCT-CRC-HE-100K не опубликовано соответствие
+  # каждого патча конкретному пациенту или слайду.
+  # Поэтому это только patch-level validation.
+  internal_validation_fraction: 0.10
+
+  pilot:
+    enabled: true
+
+    # Выбирается до разделения train/validation:
+    # 600 × 9 = 5400 патчей.
+    train_pool_per_class: 600
+
+    # 200 × 9 = 1800 изображений external test.
+    external_test_per_class: 200
+
+  audit:
+    # Проверить возможность декодирования изображений.
+    verify_images: true
+    verify_max_per_class_and_source: 200
+
+    # Число изображений для статистики цвета.
+    color_statistics_per_class_and_source: 200
+
+    # Число изображений каждого класса в montage.
+    montage_images_per_class: 8
