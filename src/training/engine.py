@@ -51,22 +51,32 @@ def train_one_epoch(
         ):
             break
 
-        images = _move_images_to_device(
-            batch=batch,
-            runtime=runtime,
+        input_images = batch["image"].to(
+            runtime.device,
+            non_blocking=runtime.pin_memory,
         )
+
+        if "target_image" in batch:
+            target_images = batch[
+                "target_image"
+            ].to(
+                runtime.device,
+                non_blocking=runtime.pin_memory,
+            )
+        else:
+            target_images = input_images
 
         optimizer.zero_grad(set_to_none=True)
 
         with _autocast_context(runtime):
             output = model(
-                images,
+                input_images,
                 sample_posterior=True,
             )
 
             loss_output = compute_model_loss(
                 output=output,
-                target=images,
+                target=target_images,
                 model_type=model_type,
                 beta=beta,
                 reconstruction_type=reconstruction_type,
@@ -101,7 +111,7 @@ def train_one_epoch(
 
         accumulator.update(
             loss_output=loss_output,
-            batch_size=images.shape[0],
+            batch_size=input_images.shape[0],
         )
 
         global_step += 1
@@ -176,20 +186,30 @@ def validate_one_epoch(
         ):
             break
 
-        images = _move_images_to_device(
-            batch=batch,
-            runtime=runtime,
+        input_images = batch["image"].to(
+            runtime.device,
+            non_blocking=runtime.pin_memory,
         )
+
+        if "target_image" in batch:
+            target_images = batch[
+                "target_image"
+            ].to(
+                runtime.device,
+                non_blocking=runtime.pin_memory,
+            )
+        else:
+            target_images = input_images
 
         with _autocast_context(runtime):
             output = model(
-                images,
+                input_images,
                 sample_posterior=False,
             )
 
             loss_output = compute_model_loss(
                 output=output,
-                target=images,
+                target=target_images,
                 model_type=model_type,
                 beta=beta,
                 reconstruction_type=reconstruction_type,
@@ -197,7 +217,7 @@ def validate_one_epoch(
 
         accumulator.update(
             loss_output=loss_output,
-            batch_size=images.shape[0],
+            batch_size=input_images.shape[0],
         )
 
     return accumulator.compute()

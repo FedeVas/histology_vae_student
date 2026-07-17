@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import torch
 from collections.abc import Callable
 
 from PIL import Image
@@ -133,3 +134,171 @@ def _build_color_transforms(
             num_output_channels=3,
         )
     ]
+
+class ColorDenoisingPairTransform:
+    """
+    Создаёт пару:
+
+        input_tensor:
+            геометрически преобразованное изображение
+            с дополнительным ColorJitter;
+
+        target_tensor:
+            то же геометрическое преобразование,
+            но без изменения цвета.
+
+    Input и target всегда имеют одинаковую геометрию.
+    """
+
+    def __init__(
+        self,
+        image_size: int,
+        horizontal_flip_probability: float = 0.5,
+        vertical_flip_probability: float = 0.5,
+        random_quarter_turn: bool = True,
+        brightness: float = 0.15,
+        contrast: float = 0.15,
+        saturation: float = 0.20,
+        hue: float = 0.03,
+    ) -> None:
+        if image_size <= 0:
+            raise ValueError(
+                "image_size must be positive."
+            )
+
+        for probability_name, probability in {
+            "horizontal_flip_probability": (
+                horizontal_flip_probability
+            ),
+            "vertical_flip_probability": (
+                vertical_flip_probability
+            ),
+        }.items():
+            if not 0.0 <= probability <= 1.0:
+                raise ValueError(
+                    f"{probability_name} must be "
+                    "between 0 and 1."
+                )
+
+        for parameter_name, parameter_value in {
+            "brightness": brightness,
+            "contrast": contrast,
+            "saturation": saturation,
+            "hue": hue,
+        }.items():
+            if parameter_value < 0:
+                raise ValueError(
+                    f"{parameter_name} must be "
+                    "non-negative."
+                )
+
+        if hue > 0.5:
+            raise ValueError(
+                "hue must not exceed 0.5."
+            )
+
+        self.image_size = int(image_size)
+
+        self.horizontal_flip_probability = float(
+            horizontal_flip_probability
+        )
+
+        self.vertical_flip_probability = float(
+            vertical_flip_probability
+        )
+
+        self.random_quarter_turn = bool(
+            random_quarter_turn
+        )
+
+        self.color_jitter = transforms.ColorJitter(
+            brightness=brightness,
+            contrast=contrast,
+            saturation=saturation,
+            hue=hue,
+        )
+
+    def __call__(
+        self,
+        image: Image.Image,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        clean_image = image.convert("RGB")
+
+        clean_image = transform_functional.resize(
+            clean_image,
+            size=[
+                self.image_size,
+                self.image_size,
+            ],
+        )
+
+        if (
+            torch.rand(1).item()
+            < self.horizontal_flip_probability
+        ):
+            clean_image = transform_functional.hflip(
+                clean_image
+            )
+
+        if (
+            torch.rand(1).item()
+            < self.vertical_flip_probability
+        ):
+            clean_image = transform_functional.vflip(
+                clean_image
+            )
+
+        if self.random_quarter_turn:
+            number_of_turns = int(
+                torch.randint(
+                    low=0,
+                    high=4,
+                    size=(1,),
+                ).item()
+            )
+
+            if number_of_turns:
+                clean_image = transform_functional.rotate(
+                    clean_image,
+                    angle=90 * number_of_turns,
+                )
+
+        corrupted_image = self.color_jitter(
+            clean_image
+        )
+
+        input_tensor = transform_functional.to_tensor(
+            corrupted_image
+        )
+
+        target_tensor = transform_functional.to_tensor(
+            clean_image
+        )
+
+        return input_tensor, target_tensor
+
+
+def build_color_denoising_pair_transform(
+    image_size: int,
+    horizontal_flip_probability: float = 0.5,
+    vertical_flip_probability: float = 0.5,
+    random_quarter_turn: bool = True,
+    brightness: float = 0.15,
+    contrast: float = 0.15,
+    saturation: float = 0.20,
+    hue: float = 0.03,
+) -> ColorDenoisingPairTransform:
+    return ColorDenoisingPairTransform(
+        image_size=image_size,
+        horizontal_flip_probability=(
+            horizontal_flip_probability
+        ),
+        vertical_flip_probability=(
+            vertical_flip_probability
+        ),
+        random_quarter_turn=random_quarter_turn,
+        brightness=brightness,
+        contrast=contrast,
+        saturation=saturation,
+        hue=hue,
+    )

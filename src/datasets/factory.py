@@ -15,6 +15,7 @@ from src.datasets.synthetic import (
     generate_synthetic_histology_dataset,
 )
 from src.datasets.transforms import (
+    build_color_denoising_pair_transform,
     build_evaluation_transforms,
     build_train_transforms,
 )
@@ -193,24 +194,113 @@ def build_datasets(
         )
     )
     augmentation_config = data_config["augmentation"]
-
-    train_transform = build_train_transforms(
-        image_size=int(data_config["image_size"]),
-        color_mode=color_mode,
-        horizontal_flip_probability=float(
-            augmentation_config[
-                "horizontal_flip_probability"
-            ]
-        ),
-        vertical_flip_probability=float(
-            augmentation_config[
-                "vertical_flip_probability"
-            ]
-        ),
-        use_random_quarter_turn=bool(
-            augmentation_config["random_quarter_turn"]
-        ),
+    color_denoising_config = (
+        augmentation_config.get(
+            "color_denoising",
+            {},
+        )
     )
+
+    color_denoising_enabled = bool(
+        color_denoising_config.get(
+            "enabled",
+            False,
+        )
+    )
+    
+    training_transform = None
+    training_paired_transform = None
+
+    if color_denoising_enabled:
+        color_mode = str(
+            data_config.get(
+                "color_mode",
+                "rgb",
+            )
+        ).strip().lower()
+
+        if color_mode != "rgb":
+            raise ValueError(
+                "Color denoising requires "
+                "data.color_mode: rgb."
+            )
+
+        training_paired_transform = (
+            build_color_denoising_pair_transform(
+                image_size=int(
+                    data_config["image_size"]
+                ),
+                horizontal_flip_probability=float(
+                    augmentation_config[
+                        "horizontal_flip_probability"
+                    ]
+                ),
+                vertical_flip_probability=float(
+                    augmentation_config[
+                        "vertical_flip_probability"
+                    ]
+                ),
+                random_quarter_turn=bool(
+                    augmentation_config[
+                        "random_quarter_turn"
+                    ]
+                ),
+                brightness=float(
+                    color_denoising_config.get(
+                        "brightness",
+                        0.15,
+                    )
+                ),
+                contrast=float(
+                    color_denoising_config.get(
+                        "contrast",
+                        0.15,
+                    )
+                ),
+                saturation=float(
+                    color_denoising_config.get(
+                        "saturation",
+                        0.20,
+                    )
+                ),
+                hue=float(
+                    color_denoising_config.get(
+                        "hue",
+                        0.03,
+                    )
+                ),
+            )
+        )
+
+    else:
+        training_transform = (
+            build_train_transforms(
+                image_size=int(
+                    data_config["image_size"]
+                ),
+                horizontal_flip_probability=float(
+                    augmentation_config[
+                        "horizontal_flip_probability"
+                    ]
+                ),
+                vertical_flip_probability=float(
+                    augmentation_config[
+                        "vertical_flip_probability"
+                    ]
+                ),
+                random_quarter_turn=bool(
+                    augmentation_config[
+                        "random_quarter_turn"
+                    ]
+                ),
+                color_mode=str(
+                    data_config.get(
+                        "color_mode",
+                        "rgb",
+                    )
+                ),
+            )
+        )
 
     evaluation_transform = build_evaluation_transforms(
         image_size=int(data_config["image_size"]),
@@ -225,7 +315,8 @@ def build_datasets(
     return DatasetBundle(
         train=HistologyPatchDataset(
             split="train",
-            transform=train_transform,
+            transform=training_transform,
+            paired_transform=training_paired_transform,
             **common_arguments,
         ),
         validation=HistologyPatchDataset(
@@ -349,6 +440,7 @@ def build_evaluation_data_loader(
         metadata=metadata,
         split=split,
         transform=evaluation_transform,
+        root_dir=data_config["root_dir"],
     )
 
     number_of_workers = int(

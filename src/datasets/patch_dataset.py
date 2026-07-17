@@ -36,6 +36,7 @@ class HistologyPatchDataset(Dataset):
         split: str,
         transform: Any = None,
         root_dir: str | Path = ".",
+        paired_transform: Any = None,
     ) -> None:
         if isinstance(metadata, (str, Path)):
             metadata_frame = pd.read_csv(metadata)
@@ -55,7 +56,8 @@ class HistologyPatchDataset(Dataset):
 
         if split not in supported_splits:
             raise ValueError(
-                f"Split must be one of {sorted(supported_splits)}, "
+                f"Split must be one of "
+                f"{sorted(supported_splits)}, "
                 f"received: {split!r}"
             )
 
@@ -65,12 +67,39 @@ class HistologyPatchDataset(Dataset):
 
         if split_metadata.empty:
             raise ValueError(
-                f"No samples were found for split {split!r}."
+                f"No samples were found for split "
+                f"{split!r}."
             )
 
-        self.metadata = split_metadata.reset_index(drop=True)
-        self.split = split
+        # Сначала сохраняем аргументы как атрибуты.
         self.transform = transform
+        self.paired_transform = paired_transform
+
+        # Теперь их можно безопасно проверять.
+        if (
+            self.transform is not None
+            and self.paired_transform is not None
+        ):
+            raise ValueError(
+                "Use either transform or "
+                "paired_transform, not both."
+            )
+
+        if (
+            self.transform is None
+            and self.paired_transform is None
+        ):
+            raise ValueError(
+                "Either transform or paired_transform "
+                "must be provided."
+            )
+
+        self.metadata = (
+            split_metadata
+            .reset_index(drop=True)
+        )
+
+        self.split = split
         self.root_dir = Path(root_dir)
 
     def __len__(self) -> int:
@@ -87,26 +116,39 @@ class HistologyPatchDataset(Dataset):
             )
 
         try:
-            with Image.open(image_path) as image_file:
-                image = image_file.convert("RGB")
+            with Image.open(image_path) as image:
+                image = image.convert("RGB")
+                
+                if self.paired_transform is not None:
+                    input_image, target_image = self.paired_transform(image)
+                    
+                elif self.transform is not None:
+                    input_image = self.transform(image)
+                    target_image = None
+                else:
+                    raise ValueError(
+                        "Dataset requires transform or "
+                        "paired_transform to be specified."
+                    )
         except OSError as error:
             raise OSError(
                 f"Failed to read image: {image_path.resolve()}"
             ) from error
 
-        if self.transform is not None:
-            image = self.transform(image)
+        # if self.transform is not None:
+        #     image = self.transform(image)
 
         label = self._extract_label(row)
 
         sample: dict[str, Any] = {
-            "image": image,
-            "label": torch.tensor(label, dtype=torch.long),
+            "image": input_image,
+            "label": label,
             "path": str(image_path),
             "patient_id": str(row["patient_id"]),
             "slide_id": str(row["slide_id"]),
         }
-
+        if target_image is not None:
+            sample["target_image"] = target_image
         optional_string_fields = (
             "sample_id",
             "patch_id",

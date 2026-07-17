@@ -1,0 +1,90 @@
+project:
+  name: histology-vae
+  seed: 42
+  output_dir: outputs
+
+device:
+  accelerator: cpu
+  deterministic: true
+
+data:
+  root_dir: .
+  metadata_csv: data/metadata/crc_pilot_metadata.csv
+
+  # Оригинальные изображения имеют размер 224×224.
+  # Для первого CPU-pilot уменьшаем до 128×128.
+  image_size: 128
+  channels: 3
+  color_mode: rgb
+
+  batch_size: 16
+  num_workers: 0
+  pin_memory: auto
+
+  split:
+    force_reassign: false
+
+  augmentation:
+    horizontal_flip_probability: 0.5
+    vertical_flip_probability: 0.5
+    random_quarter_turn: true
+
+    color_denoising:
+      enabled: true
+      brightness: 0.15
+      contrast: 0.15
+      saturation: 0.2
+      hue: 0.03
+
+  synthetic:
+    enabled: false
+
+model:
+  type: vae
+  name: convolutional_vae
+
+  latent_dim: 32
+
+  hidden_channels:
+    - 16
+    - 32
+    - 64
+    - 128
+
+  log_var_min: -10.0
+  log_var_max: 10.0
+
+training:
+  epochs: 20
+
+  learning_rate: 0.001
+  weight_decay: 0.00001
+
+  reconstruction_loss: mse
+
+  beta: 1.0
+  kl_warmup_epochs: 5
+
+  mixed_precision: auto
+  gradient_clip_norm: 5.0
+
+  log_every_n_steps: 20
+
+  preview_every_n_epochs: 1
+  preview_images: 8
+
+  max_train_batches: null
+  max_validation_batches: null
+
+  early_stopping:
+    enabled: true
+    patience: 6
+    min_delta: 0.0
+
+logging:
+  run_name: crc_pilot_color_denoising_vae_beta_1
+
+evaluation:
+  active_unit_variance_threshold: 0.001
+  low_kl_threshold: 0.001
+  preview_images: 8

@@ -1,137 +1,212 @@
-# Histology VAE
+# Unsupervised Histology Representation Learning with Variational Autoencoders
 
-Учебно-исследовательский проект по обучению Variational Autoencoder на H&E histology patches.
+A reproducible PyTorch project for studying unsupervised representation
+learning and shortcut effects in colorectal H&E histology patches.
 
-Цель проекта — построить воспроизводимый pipeline для unsupervised representation learning на гистологических изображениях с дальнейшим анализом reconstruction, latent space, clustering и patient-level representations.
+The project compares standard RGB variational autoencoders, grayscale
+training, color-denoising training and a spatially invariant color-only
+baseline.
 
-## Текущий этап
+## Project motivation
 
-На данный момент реализованы:
+Histology models may achieve high classification performance by using
+stain, brightness or acquisition-related shortcuts rather than tissue
+architecture.
 
-* конфигурация проекта через YAML;
-* автоматический выбор CPU, CUDA или MPS;
-* воспроизводимая установка random seed;
-* проверка forward pass, backward pass и optimizer step;
-* patient-level разделение данных без утечки пациентов;
-* PyTorch Dataset и DataLoader;
-* train и evaluation transforms;
-* генератор синтетических histology-like patches;
-* unit tests для вычислительного устройства и data pipeline.
+This project asks:
 
-Синтетические изображения используются только для инженерной проверки pipeline и не предназначены для биологических выводов.
+> How much transferable tissue information is learned by a baseline VAE,
+> and how much of the apparent class signal can be explained by color
+> alone?
 
-## Структура проекта
+Labels are not used to train the autoencoders. They are used only for
+post-hoc representation evaluation.
+
+## Public data
+
+The experiments use public colorectal histology patches from:
+
+- NCT-CRC-HE-100K;
+- CRC-VAL-HE-7K.
+
+The pilot contains nine tissue classes:
+
+`ADI`, `BACK`, `DEB`, `LYM`, `MUC`, `MUS`, `NORM`, `STR`, and `TUM`.
+
+| Split | Images |
+|---|---:|
+| Train | 4,860 |
+| Validation | 540 |
+| External test | 1,800 |
+
+The internal validation split is patch-level because reliable
+patch-to-patient mapping is unavailable in the public training archive.
+The external test set comes from a separate public dataset.
+
+## Models and controls
+
+The project implements:
+
+- deterministic convolutional autoencoder;
+- convolutional VAE;
+- beta-VAE support;
+- RGB VAE;
+- grayscale VAE;
+- RGB color-denoising VAE;
+- RGB/HSV spatially invariant color baseline;
+- PCA capacity matching;
+- linear probing;
+- paired bootstrap comparison;
+- nearest-neighbor morphology retrieval;
+- Euclidean and cosine retrieval sensitivity analysis.
+
+## Main results
+
+### External linear probe
+
+| Representation | Dimensions | Balanced accuracy | Macro-F1 |
+|---|---:|---:|---:|
+| RGB VAE | 32 | 0.3478 | 0.3256 |
+| Color-denoising VAE | 32 | 0.3961 | 0.3555 |
+| Grayscale VAE | 32 | **0.4122** | **0.3872** |
+| RGB-HSV PCA | 32 | **0.6528** | **0.6490** |
+
+The balanced random-class reference is approximately `0.1111`.
+
+The color-only representation is substantially stronger than every VAE,
+showing that color is a major shortcut in this dataset.
+
+Among the VAE variants, grayscale preprocessing provides the strongest
+overall external performance.
+
+### Cosine nearest-neighbor retrieval
+
+| Model | Top-1 | MRR | Precision@5 | Hit rate@5 |
+|---|---:|---:|---:|---:|
+| Grayscale VAE | **0.3539** | **0.4824** | 0.3313 | **0.7172** |
+| Color-denoising VAE | 0.3494 | 0.4760 | **0.3352** | 0.6939 |
+
+The learned latent spaces contain non-random local tissue structure, but
+complex epithelial, stromal and inflammatory classes remain mixed.
+
+Detailed results, bootstrap intervals and retrieval examples are
+available in [docs/RESULTS.md](docs/RESULTS.md).
+
+## Key conclusion
+
+The experiments demonstrate that strong downstream classification does
+not necessarily imply strong morphological representation learning.
+
+Global color statistics provide the strongest class signal, while
+removing or perturbing color improves the transferability of VAE latent
+representations relative to a standard RGB reconstruction objective.
+
+## Repository structure
 
 ```text
-histology-vae/
-├── configs/
-├── data/
-│   ├── metadata/
-│   ├── patches/
-│   └── raw/
-├── notebooks/
-├── outputs/
-├── reports/
-├── src/
-│   ├── analysis/
-│   ├── datasets/
-│   ├── models/
-│   ├── training/
-│   └── utils/
-├── tests/
-├── requirements.txt
-└── README.md
-```
+configs/
+    Experiment configuration files.
 
-## Установка
+data/
+    Local datasets and generated metadata.
+    Raw image data is not tracked by Git.
 
-Создание виртуального окружения на Windows:
+docs/
+    Final results and selected figures.
 
-```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-```
+src/
+    datasets/
+        Metadata, transformations and dataset factories.
+    models/
+        Autoencoder and VAE implementations.
+    training/
+        Training engine, losses and checkpoints.
+    analysis/
+        Reconstruction, latent, probe, color and retrieval analyses.
 
-Установка CPU-версии PyTorch:
+tests/
+    Unit and integration tests.
 
-```powershell
-python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-```
+outputs/
+    Local training runs and analysis outputs.
+    Large outputs are not tracked by Git.
 
-Установка остальных зависимостей:
+Installation
 
-```powershell
+Create a virtual environment and install the project dependencies.
+
+python -m venv .venv
+
+Windows:
+
+.venv\Scripts\activate
+
+Install the dependencies recorded for the project:
+
 python -m pip install -r requirements.txt
-```
-
-## Проверка окружения
-
-```powershell
-python -m src.check_environment
-```
-
-Скрипт проверяет:
-
-* загрузку конфигурации;
-* выбор вычислительного устройства;
-* создание тензоров;
-* forward pass;
-* backward pass;
-* optimizer step.
-
-## Проверка data pipeline
-
-```powershell
-python -m src.check_data_pipeline
-```
-
-При первом запуске будет создан небольшой синтетический dataset для проверки metadata, patient-level splits, Dataset и DataLoader.
-
-## Запуск тестов
-
-```powershell
+Run tests
 python -m pytest -q
-```
+Train a model
 
-## Вычислительные устройства
+Standard RGB VAE:
 
-В `configs/vae_base.yaml` можно выбрать:
+python -m src.train --config configs/crc_vae_pilot_cpu.yaml
 
-```yaml
-device:
-  accelerator: auto
-```
+Grayscale VAE:
 
-Поддерживаемые значения:
+python -m src.train --config configs/crc_grayscale_vae_pilot_cpu.yaml
 
-* `auto`;
-* `cpu`;
-* `cuda`;
-* `mps`.
+Color-denoising VAE:
 
-В режиме `auto` используется следующий приоритет:
+python -m src.train --config configs/crc_color_denoising_vae_pilot_cpu.yaml
 
-```text
-CUDA → MPS → CPU
-```
+A short engineering check can be run with:
 
-## Следующие этапы
+python -m src.train --config configs/crc_vae_pilot_cpu.yaml --smoke-test
+Extract embeddings
+python -m src.evaluate --config CONFIG_PATH --checkpoint CHECKPOINT_PATH --split train
+python -m src.evaluate --config CONFIG_PATH --checkpoint CHECKPOINT_PATH --split validation
+python -m src.evaluate --config CONFIG_PATH --checkpoint CHECKPOINT_PATH --split test
 
-Планируется реализовать:
+Evaluation loaders are deterministic and do not use random training
+augmentations.
 
-1. convolutional encoder и decoder;
-2. VAE reparameterization;
-3. reconstruction и KL losses;
-4. training и validation loops;
-5. reconstruction metrics;
-6. latent-space extraction;
-7. PCA, UMAP и clustering;
-8. patient-level aggregation;
-9. сравнение с pretrained image encoders.
+Linear probe
+python -m src.run_linear_probe --train-embeddings TRAIN_CSV --validation-embeddings VALIDATION_CSV --test-embeddings TEST_CSV --feature-prefix latent_ --output-dir OUTPUT_DIRECTORY
 
-## Ограничения
+For color features:
 
-Реальные histology datasets, whole-slide images, извлечённые patches, checkpoints и результаты экспериментов не хранятся в Git-репозитории.
+python -m src.run_linear_probe --train-embeddings TRAIN_COLOR_CSV --validation-embeddings VALIDATION_COLOR_CSV --test-embeddings TEST_COLOR_CSV --feature-prefix color_ --pca-components 32 --output-dir OUTPUT_DIRECTORY
+Nearest-neighbor retrieval
+python -m src.run_retrieval --train-embeddings TRAIN_CSV --query-embeddings TEST_CSV --output-dir OUTPUT_DIRECTORY --k-values 1 3 5 --metric cosine --queries-per-class 3 --montage-neighbors 5
 
-Для больших данных в дальнейшем планируется использовать внешнее хранилище или систему версионирования данных.
+Labels are not used to identify neighbors. They are applied only after
+retrieval to calculate class agreement.
+
+Reproducibility
+
+The project uses:
+
+configuration-driven experiments;
+fixed random seeds;
+deterministic evaluation transforms;
+train-only fitting for preprocessing and model selection;
+external dataset evaluation;
+saved checkpoints and machine-readable metrics;
+automated tests;
+explicit shortcut controls.
+Scope and limitations
+
+This project evaluates representation quality on public tissue-class
+patches. It does not make clinical predictions and does not use patient
+outcomes, treatment response, proprietary datasets or confidential
+patient information.
+
+Results are based on pilot subsets and one main training seed per model.
+Internal validation and bootstrap analyses are patch-level.
+
+License
+
+This repository contains project source code only. Public datasets remain
+subject to their original licenses and usage terms.
+

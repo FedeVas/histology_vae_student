@@ -35,29 +35,40 @@ def create_reconstruction_grid(
             "Cannot create preview from an empty DataLoader."
         ) from error
 
-    images = batch["image"].to(
+    input_images = batch["image"].to(
         runtime.device,
         non_blocking=runtime.pin_memory,
     )
 
+    if "target_image" in batch:
+        target_images = batch[
+            "target_image"
+        ].to(
+            runtime.device,
+            non_blocking=runtime.pin_memory,
+        )
+    else:
+        target_images = input_images
+
     number_of_images = min(
         number_of_images,
-        images.shape[0],
+        input_images.shape[0],
     )
 
-    images = images[:number_of_images]
+    input_images = input_images[:number_of_images]
+    target_images = target_images[:number_of_images]
 
     was_training = model.training
     model.eval()
 
     output = model(
-        images,
+        input_images,
         sample_posterior=False,
     )
 
-    originals = images.detach().cpu()
+    originals = target_images.detach().cpu()
     reconstructions = (
-        output.reconstruction.detach().cpu()
+        output.reconstruction
     )
 
     absolute_errors = torch.abs(

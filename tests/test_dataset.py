@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 import pytest
 import torch
 from PIL import Image
@@ -17,6 +18,7 @@ from src.datasets.synthetic import (
 )
 from src.datasets.transforms import (
     build_evaluation_transforms,
+    build_color_denoising_pair_transform,
 )
 
 
@@ -406,4 +408,172 @@ def test_transform_rejects_unknown_color_mode() -> None:
         build_evaluation_transforms(
             image_size=16,
             color_mode="lab",
+        )
+
+
+def test_color_denoising_transform_returns_input_and_target() -> None:
+    image_array = np.zeros(
+        shape=(32, 32, 3),
+        dtype=np.uint8,
+    )
+
+    image_array[:, :, 0] = 200
+    image_array[:, :, 1] = 80
+    image_array[:, :, 2] = 140
+
+    image = Image.fromarray(
+        image_array,
+        mode="RGB",
+    )
+
+    torch.manual_seed(42)
+
+    transform = (
+        build_color_denoising_pair_transform(
+            image_size=24,
+            horizontal_flip_probability=0.0,
+            vertical_flip_probability=0.0,
+            random_quarter_turn=False,
+            brightness=0.4,
+            contrast=0.0,
+            saturation=0.0,
+            hue=0.0,
+        )
+    )
+
+    input_tensor, target_tensor = transform(
+        image
+    )
+
+    assert input_tensor.shape == (
+        3,
+        24,
+        24,
+    )
+
+    assert target_tensor.shape == (
+        3,
+        24,
+        24,
+    )
+
+    assert torch.isfinite(
+        input_tensor
+    ).all()
+
+    assert torch.isfinite(
+        target_tensor
+    ).all()
+
+    assert not torch.allclose(
+        input_tensor,
+        target_tensor,
+    )
+    
+    
+def test_dataset_supports_paired_transform(
+    tmp_path: Path,
+) -> None:
+    image_path = (
+        tmp_path / "paired_patch.png"
+    )
+
+    Image.new(
+        mode="RGB",
+        size=(32, 32),
+        color=(180, 90, 140),
+    ).save(image_path)
+
+    metadata = pd.DataFrame(
+        [
+            {
+                "path": image_path.as_posix(),
+                "patient_id": "patient_001",
+                "slide_id": "slide_001",
+                "label": 0,
+                "split": "train",
+            }
+        ]
+    )
+
+    paired_transform = (
+        build_color_denoising_pair_transform(
+            image_size=24,
+            horizontal_flip_probability=0.0,
+            vertical_flip_probability=0.0,
+            random_quarter_turn=False,
+            brightness=0.4,
+            contrast=0.0,
+            saturation=0.0,
+            hue=0.0,
+        )
+    )
+
+    dataset = HistologyPatchDataset(
+        metadata=metadata,
+        split="train",
+        paired_transform=paired_transform,
+    )
+
+    sample = dataset[0]
+
+    assert sample["image"].shape == (
+        3,
+        24,
+        24,
+    )
+
+    assert sample["target_image"].shape == (
+        3,
+        24,
+        24,
+    )
+    
+    
+def test_dataset_rejects_regular_and_paired_transform(
+    tmp_path: Path,
+) -> None:
+    image_path = (
+        tmp_path / "patch.png"
+    )
+
+    Image.new(
+        mode="RGB",
+        size=(32, 32),
+        color=(180, 90, 140),
+    ).save(image_path)
+
+    metadata = pd.DataFrame(
+        [
+            {
+                "path": image_path.as_posix(),
+                "patient_id": "patient_001",
+                "slide_id": "slide_001",
+                "label": 0,
+                "split": "train",
+            }
+        ]
+    )
+
+    regular_transform = (
+        build_evaluation_transforms(
+            image_size=24
+        )
+    )
+
+    paired_transform = (
+        build_color_denoising_pair_transform(
+            image_size=24,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="either transform or paired_transform",
+    ):
+        HistologyPatchDataset(
+            metadata=metadata,
+            split="train",
+            transform=regular_transform,
+            paired_transform=paired_transform,
         )
