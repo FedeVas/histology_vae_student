@@ -1,13 +1,40 @@
+# Core numerical / data stack.
 numpy
 pandas
 Pillow
 PyYAML
-matplotlib
+
+# Deep learning. The project is CPU-only by default (see
+# configs/*_cpu.yaml); install a CUDA build of torch/torchvision
+# from https://pytorch.org/get-started/locally/ instead of this
+# entry if you have a GPU.
+torch
+torchvision
+
+# Classical machine learning and computer vision.
 scikit-learn
 scikit-image
+opencv-python-headless
+joblib
+
+# Visualization.
+matplotlib
+seaborn
+
+# Training/monitoring utilities.
 tqdm
 tensorboard
 umap-learn
+
+# Notebooks.
 jupyterlab
 ipykernel
+
+# Testing.
 pytest
+
+# Optional: only required for
+# `python -m src.generate_llm_report` (LLM-assisted experiment
+# summaries). Not needed for training, evaluation or the core
+# analysis pipeline.
+# anthropic

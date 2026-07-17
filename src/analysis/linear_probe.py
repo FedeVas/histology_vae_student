@@ -38,7 +38,7 @@ class LinearProbeResult:
 
     final_model: Pipeline
     feature_columns: list[str]
-    feature_prefix: strd
+    feature_prefix: str
     pca_components: int | None
     class_table: pd.DataFrame
 

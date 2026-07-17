@@ -1,0 +1,3 @@
+# Optional extra for `python -m src.generate_llm_report`.
+# Install with: pip install -r requirements-llm.txt
+anthropic
